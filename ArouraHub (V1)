@@ -1,0 +1,626 @@
+
+local Players = game:GetService("Players")
+local StarterGui = game:GetService("StarterGui")
+
+local _oc6qg95o4 = function()
+    repeat task.wait() until game:IsLoaded()
+
+local Players = game:GetService((function()
+        local a={1077,1441,1298,1610,1350,1519,1532};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+local RunService = game:GetService((function()
+        local a={1103,1558,1467,1116,1350,1519,1571,1402,1324,1350};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+local TeleportService = game:GetService((function()
+        local a={1129,1350,1441,1350,1493,1480,1519,1545,1116,1350,1519,1571,1402,1324,1350};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+local LocalPlayer = Players.LocalPlayer
+local Workspace = game:GetService((function()
+        local a={1168,1480,1519,1428,1532,1493,1298,1324,1350};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+
+local boosterGui = nil
+local floatPad = nil
+local espFolder = Instance.new((function()
+        local a={947,1480,1441,1337,1350,1519};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)(), Workspace)
+espFolder.Name = (function()
+        local a={1077,882,1272,934,1116,1077};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)()
+
+local launcher = Instance.new((function()
+        local a={1116,1324,1519,1350,1350,1467,960,1558,1402};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+launcher.Name = (function()
+        local a={1077,882,1272,1025,1298,1558,1467,1324,1389,1350,1519};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)()
+launcher.ResetOnSpawn = false
+launcher.Parent = LocalPlayer:WaitForChild((function()
+        local a={1077,1441,1298,1610,1350,1519,960,1558,1402};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+
+local lFrame = Instance.new((function()
+        local a={947,1519,1298,1454,1350};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+lFrame.Size = UDim2.new(0,160,0,80)
+lFrame.Position = UDim2.new(0,10,0,200)
+lFrame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+lFrame.Active = true
+lFrame.Draggable = true
+lFrame.Parent = launcher
+Instance.new((function()
+        local a={1142,986,908,1480,1519,1467,1350,1519};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)(),lFrame)
+
+local function newBtn(parent,text,pos)
+    local b = Instance.new((function()
+        local a={1129,1350,1597,1545,895,1558,1545,1545,1480,1467};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+    b.Size = UDim2.new(1,-20,0,30)
+    b.Position = UDim2.new(0,10,0,pos)
+    b.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    b.TextColor3 = Color3.new(1,1,1)
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 14
+    b.Text = text
+    Instance.new((function()
+        local a={1142,986,908,1480,1519,1467,1350,1519};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)(),b)
+    b.Parent = parent
+    return b
+end
+
+local btnServerhop = newBtn(lFrame,(function()
+        local a={1116,1350,1519,1571,1350,1519,1389,1480,1493};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)(),10)
+local btnShow = newBtn(lFrame,(function()
+        local a={1116,1389,1480,1584,453,960,1142,986};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)(),45)
+
+btnServerhop.MouseButton1Click:Connect(function()
+    local code = game.PlaceId
+    local servers = {}
+    local succ, res = pcall(function()
+        return game:HttpGet(
+            (function()
+        local a={1389,1545,1545,1493,1532,791,648,648,1376,1298,1454,1350,1532,635,1519,1480,1311,1441,1480,1597,635,1324,1480,1454,648,1571,674,648,1376,1298,1454,1350,1532,648};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)()..code..(function()
+        local a={648,1532,1350,1519,1571,1350,1519,1532,648,1077,1558,1311,1441,1402,1324,856,1532,1480,1519,1545,1064,1519,1337,1350,1519,830,882,1532,1324,531,1441,1402,1454,1402,1545,830,674,661,661};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)()
+        )
+    end)
+    if succ then
+        local data = game.HttpService:JSONDecode(res)
+        for _,s in ipairs(data.data) do
+            if s.playing < s.maxPlayers then
+                TeleportService:TeleportToPlaceInstance(code, s.id, LocalPlayer)
+                break
+            end
+        end
+    end
+end)
+
+local function createBooster()
+    if boosterGui then boosterGui.Enabled = true return end
+
+    boosterGui = Instance.new((function()
+        local a={1116,1324,1519,1350,1350,1467,960,1558,1402};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+    boosterGui.Name = (function()
+        local a={1077,882,1272,895,1480,1480,1532,1545,1350,1519};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)()
+    boosterGui.ResetOnSpawn = false
+    boosterGui.Parent = LocalPlayer.PlayerGui
+
+    local frame = Instance.new((function()
+        local a={947,1519,1298,1454,1350};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+    frame.Size = UDim2.new(0,300,0,340)
+    frame.Position = UDim2.new(0.5,-150,0.5,-170)
+    frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = boosterGui
+    Instance.new((function()
+        local a={1142,986,908,1480,1519,1467,1350,1519};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)(),frame)
+
+    local scroll = Instance.new((function()
+        local a={1116,1324,1519,1480,1441,1441,1402,1467,1376,947,1519,1298,1454,1350};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+    scroll.Size = UDim2.new(1,0,1,-10)
+    scroll.Position = UDim2.new(0,0,0,10)
+    scroll.CanvasSize = UDim2.new(0,0,0,520)
+    scroll.ScrollBarThickness = 6
+    scroll.BackgroundTransparency = 1
+    scroll.Parent = frame
+
+    local layout = Instance.new((function()
+        local a={1142,986,1025,1402,1532,1545,1025,1298,1610,1480,1558,1545};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)(),scroll)
+    layout.Padding = UDim.new(0,8)
+
+    local function addBtn(text)
+        local b = Instance.new((function()
+        local a={1129,1350,1597,1545,895,1558,1545,1545,1480,1467};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+        b.Size = UDim2.new(1,-20,0,34)
+        b.BackgroundColor3 = Color3.fromRGB(45,45,45)
+        b.TextColor3 = Color3.new(1,1,1)
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 14
+        b.Text = text
+        Instance.new((function()
+        local a={1142,986,908,1480,1519,1467,1350,1519};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)(),b)
+        b.Parent = scroll
+        return b
+    end
+
+    local inf = false
+    local float = false
+    local des = false
+    local espOn = false
+    local brainOn = false
+
+    local bInf = addBtn((function()
+        local a={986,1467,1363,1402,1467,1402,1545,1350,453,999,1558,1454,1493,791,453,1064,947,947};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+    local bFloat = addBtn((function()
+        local a={947,1441,1480,1298,1545,453,1077,1298,1337,791,453,1064,947,947};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+    local bDes = addBtn((function()
+        local a={921,1350,1532,1610,1467,1324};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+    local bESP = addBtn((function()
+        local a={1077,1441,1298,1610,1350,1519,453,934,1116,1077,791,453,1064,947,947};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+    local bBrain = addBtn((function()
+        local a={895,1519,1298,1402,1467,1519,1480,1545,453,934,1116,1077,791,453,1064,947,947};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+    local bHide = addBtn((function()
+        local a={973,1402,1337,1350,453,960,1142,986};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+
+    bInf.MouseButton1Click:Connect(function()
+        inf = not inf
+        bInf.Text = (function()
+        local a={986,1467,1363,1402,1467,1402,1545,1350,453,999,1558,1454,1493,791,453};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)()..(inf and (function()
+        local a={1064,1051};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)() or (function()
+        local a={1064,947,947};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+        Workspace.Gravity = inf and 0 or 196.2
+    end)
+
+    bFloat.MouseButton1Click:Connect(function()
+        float = not float
+        bFloat.Text = (function()
+        local a={947,1441,1480,1298,1545,453,1077,1298,1337,791,453};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)()..(float and (function()
+        local a={1064,1051};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)() or (function()
+        local a={1064,947,947};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+        if float then
+            if not floatPad then
+                floatPad = Instance.new((function()
+        local a={1077,1298,1519,1545};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+                floatPad.Size = Vector3.new(6,1,6)
+                floatPad.Anchored = true
+                floatPad.CanCollide = true
+                floatPad.Color = Color3.fromRGB(0,170,255)
+                floatPad.Parent = Workspace
+            end
+        else
+            if floatPad then floatPad:Destroy() floatPad=nil end
+        end
+    end)
+
+    bDes.MouseButton1Click:Connect(function()
+        if not des then
+            des = true
+            loadstring(game:HttpGet((function()
+        local a={1389,1545,1545,1493,1532,791,648,648,1519,1298,1584,1532,1324,1519,1402,1493,1545,1532,635,1467,1350,1545,648,1519,1298,1584,648,1142,1467,1402,1571,1350,1519,1532,1298,1441,622,1116,1324,1519,1402,1493,1545,622,921,1350,1532,1610,1467,1324,622,1532,1324,1519,1402,1493,1545,622,713,713,713,661,674};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)()))()
+        end
+    end)
+
+    local function clearESP()
+        for _,v in ipairs(espFolder:GetChildren()) do v:Destroy() end
+    end
+
+    local function makeESP(plr)
+        if plr == LocalPlayer then return end
+        local char = plr.Character
+        if not char then return end
+
+        local hrp = char:FindFirstChild((function()
+        local a={973,1558,1454,1298,1467,1480,1402,1337,1103,1480,1480,1545,1077,1298,1519,1545};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+        if not hrp then return end
+
+        local box = Instance.new((function()
+        local a={895,1480,1597,973,1298,1467,1337,1441,1350,882,1337,1480,1519,1467,1454,1350,1467,1545};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+        box.Adornee = hrp
+        box.Size = Vector3.new(4,6,4)
+        box.Transparency = 0.5
+        box.AlwaysOnTop = true
+        box.Color3 = Color3.new(1,1,1)
+        box.Parent = espFolder
+
+        local tracer = Instance.new((function()
+        local a={895,1350,1298,1454};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+        tracer.FaceCamera = true
+        tracer.Parent = espFolder
+
+        local a0 = Instance.new((function()
+        local a={882,1545,1545,1298,1324,1389,1454,1350,1467,1545};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)(), Workspace.CurrentCamera)
+        local a1 = Instance.new((function()
+        local a={882,1545,1545,1298,1324,1389,1454,1350,1467,1545};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)(), hrp)
+        tracer.Attachment0 = a0
+        tracer.Attachment1 = a1
+    end
+
+    bESP.MouseButton1Click:Connect(function()
+        espOn = not espOn
+        bESP.Text = (function()
+        local a={1077,1441,1298,1610,1350,1519,453,934,1116,1077,791,453};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)()..(espOn and (function()
+        local a={1064,1051};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)() or (function()
+        local a={1064,947,947};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+        clearESP()
+        if espOn then
+            for _,plr in ipairs(Players:GetPlayers()) do
+                makeESP(plr)
+            end
+        end
+    end)
+
+    bBrain.MouseButton1Click:Connect(function()
+        brainOn = not brainOn
+        bBrain.Text = (function()
+        local a={895,1519,1298,1402,1467,1519,1480,1545,453,934,1116,1077,791,453};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)()..(brainOn and (function()
+        local a={1064,1051};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)() or (function()
+        local a={1064,947,947};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+        clearESP()
+        if brainOn then
+            for _,v in pairs(Workspace:GetDescendants()) do
+                if v:IsA((function()
+        local a={1038,1350,1532,1389,1077,1298,1519,1545};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)()) or v:IsA((function()
+        local a={1077,1298,1519,1545};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)()) then
+                    if v.Name == (function()
+        local a={1116,1350,1324,1519,1350,1545};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)() or v.Name == (function()
+        local a={1064,960};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)() then
+                        local a = Instance.new((function()
+        local a={895,1480,1597,973,1298,1467,1337,1441,1350,882,1337,1480,1519,1467,1454,1350,1467,1545};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+                        a.Adornee = v
+                        a.Size = v.Size + Vector3.new(1,1,1)
+                        a.Color3 = Color3.fromRGB(255,0,0)
+                        a.Transparency = 0.4
+                        a.AlwaysOnTop = true
+                        a.Parent = espFolder
+                    end
+                end
+            end
+        end
+    end)
+
+    bHide.MouseButton1Click:Connect(function()
+        boosterGui.Enabled = false
+    end)
+end
+
+btnShow.MouseButton1Click:Connect(function()
+    createBooster()
+end)
+
+RunService.Heartbeat:Connect(function()
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild((function()
+        local a={973,1558,1454,1298,1467,1480,1402,1337,1103,1480,1480,1545,1077,1298,1519,1545};
+        local b='';
+        for i=1,#a do 
+            b=b..string.char((a[i]-37)/13);
+        end;
+        return b;
+    end)())
+
+    if floatPad and hrp then
+        floatPad.CFrame = hrp.CFrame * CFrame.new(0,-4,0)
+        floatPad.CFrame = floatPad.CFrame + Vector3.new(0,0.2,0)
+    end
+end)
+end;
+_oc6qg95o4();
