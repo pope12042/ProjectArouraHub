@@ -1,0 +1,145 @@
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+
+_G.Silent = false
+_G.Walk = false
+_G.ESP = false
+_G.RageActive = false
+_G.RageTarget = nil
+_G.Prediction = 0.135 
+
+local Window = Library:CreateWindow({
+    Title = "projAroura",
+    Footer = "Aroura Hub",
+    Icon = 10734950309,
+    Size = UDim2.fromOffset(300, 260),
+    Center = true
+})
+
+local Tabs = {
+    Main = Window:AddTab("Main", "crosshair"),
+    Rage = Window:AddTab("Rage", "zap"),
+    Visuals = Window:AddTab("Visuals", "eye")
+}
+
+local CombatBox = Tabs.Main:AddLeftGroupbox("Combat")
+CombatBox:AddToggle("SilentAim", { Text = "Silent Aim", Default = false, Callback = function(v) _G.Silent = v end })
+CombatBox:AddToggle("FastWalk", { Text = "Fast Walk", Default = false, Callback = function(v) _G.Walk = v end })
+
+local function GetNames()
+    local t = {}
+    for _, p in pairs(game.Players:GetPlayers()) do if p ~= game.Players.LocalPlayer then table.insert(t, p.Name) end end
+    return t
+end
+
+local TargetBox = Tabs.Rage:AddLeftGroupbox("Target")
+local PlayerDropdown = TargetBox:AddDropdown("RageTarget", { Values = GetNames(), Text = "Select Victim", Callback = function(val) _G.RageTarget = game.Players:FindFirstChild(val) end })
+TargetBox:AddButton({ Text = "Refresh", Func = function() PlayerDropdown:SetValues(GetNames()) end })
+TargetBox:AddToggle("RageActive", { Text = "Enable Ragebot", Default = false, Callback = function(v) _G.RageActive = v end })
+Tabs.Visuals:AddLeftGroupbox("ESP"):AddToggle("ESP", { Text = "ESP + Tracers", Default = false, Callback = function(v) _G.ESP = v end })
+
+local mt = getrawmetatable(game)
+local oldNamecall = mt.__namecall
+setreadonly(mt, false)
+
+mt.__namecall = newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+
+    if _G.Silent and _G.RageTarget and method == "FireServer" then
+        if tostring(self) == "MainEvent" or tostring(self) == "Shoot" or tostring(self) == "Bullet" then
+            local Root = _G.RageTarget.Character.HumanoidRootPart
+            local PredictedPos = Root.Position + (Root.Velocity * _G.Prediction)
+            args[2] = PredictedPos 
+            return oldNamecall(self, unpack(args))
+        end
+    end
+    return oldNamecall(self, ...)
+end)
+setreadonly(mt, true)
+
+task.spawn(function()
+    while task.wait() do
+        if _G.RageActive and _G.RageTarget and _G.RageTarget.Character then
+            Library:Notify("trying please wait", 0.1)
+            local T = _G.RageTarget
+            local MyChar = game.Players.LocalPlayer.Character
+            local MyRoot = MyChar:FindFirstChild("HumanoidRootPart")
+            local TRoot = T.Character:FindFirstChild("HumanoidRootPart")
+            
+            if T.Character.Humanoid.Health > 0 then
+                game.Workspace.CurrentCamera.CameraSubject = T.Character
+                MyRoot.CFrame = TRoot.CFrame * CFrame.new(0, 0, 1)
+                
+                for _, w in pairs(game.Players.LocalPlayer.Backpack:GetChildren()) do
+                    if w:IsA("Tool") then MyChar.Humanoid:EquipTool(w) w:Activate() end
+                end
+
+                if T.Character.Humanoid.Health <= 15 then
+                    MyRoot.CFrame = TRoot.CFrame * CFrame.new(0, -2, 0)
+                else
+                    task.wait(0.01)
+                    MyRoot.CFrame = TRoot.CFrame * CFrame.new(0, 8, 0)
+                end
+            else
+                _G.RageActive = false
+                game.Workspace.CurrentCamera.CameraSubject = MyChar.Humanoid
+            end
+        end
+    end
+end)
+
+local ESP_Table = {}
+local function CreateESP(P)
+    local Obj = {
+        Box = Drawing.new("Square"),
+        HealthBar = Drawing.new("Line"),
+        Tracer = Drawing.new("Line"),
+        Name = Drawing.new("Text")
+    }
+    Obj.Box.Thickness, Obj.Box.Filled = 1, false
+    Obj.HealthBar.Thickness, Obj.HealthBar.Color = 2, Color3.new(0,1,0)
+    Obj.Tracer.Thickness, Obj.Tracer.Color = 1, Color3.new(1,1,1)
+    Obj.Name.Font = 3 
+    Obj.Name.Size = 14
+    Obj.Name.Color = Color3.new(1,1,1)
+    Obj.Name.Center, Obj.Name.Outline = true, true
+    ESP_Table[P] = Obj
+end
+
+game:GetService("RunService").RenderStepped:Connect(function()
+    local LP = game.Players.LocalPlayer
+    local Cam = game.Workspace.CurrentCamera
+    
+    if _G.Walk and LP.Character then
+        LP.Character.HumanoidRootPart.Velocity = Vector3.new(LP.Character.Humanoid.MoveDirection.X * 125, LP.Character.HumanoidRootPart.Velocity.Y, LP.Character.Humanoid.MoveDirection.Z * 125)
+    end
+    
+    for P, Obj in pairs(ESP_Table) do
+        if _G.ESP and P.Character and P.Character:FindFirstChild("HumanoidRootPart") then
+            local Pos, OnScreen = Cam:WorldToViewportPoint(P.Character.HumanoidRootPart.Position)
+            if OnScreen then
+                local Size = Vector2.new(2000/Pos.Z, 3000/Pos.Z)
+                local TL = Vector2.new(Pos.X - Size.X/2, Pos.Y - Size.Y/2)
+                Obj.Box.Size, Obj.Box.Position, Obj.Box.Visible = Size, TL, true
+                local HP = P.Character.Humanoid.Health / P.Character.Humanoid.MaxHealth
+                Obj.HealthBar.From = Vector2.new(TL.X - 5, TL.Y + Size.Y)
+                Obj.HealthBar.To = Vector2.new(TL.X - 5, TL.Y + (Size.Y * (1 - HP)))
+                Obj.HealthBar.Visible = true
+                Obj.Tracer.From = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y)
+                Obj.Tracer.To = Vector2.new(Pos.X, Pos.Y + Size.Y/2)
+                Obj.Tracer.Visible = true
+                Obj.Name.Text, Obj.Name.Position, Obj.Name.Visible = P.DisplayName, Vector2.new(Pos.X, TL.Y - 16), true
+            else 
+                Obj.Box.Visible, Obj.HealthBar.Visible, Obj.Tracer.Visible, Obj.Name.Visible = false, false, false, false 
+            end
+        else 
+            Obj.Box.Visible, Obj.HealthBar.Visible, Obj.Tracer.Visible, Obj.Name.Visible = false, false, false, false 
+        end
+    end
+end)
+
+for _, v in pairs(game.Players:GetPlayers()) do if v ~= game.Players.LocalPlayer then CreateESP(v) end end
+game.Players.PlayerAdded:Connect(CreateESP)
+
+  
