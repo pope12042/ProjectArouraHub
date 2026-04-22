@@ -1,0 +1,148 @@
+loadstring(game:HttpGet("https://github.com/benzonati/Rivals-Anticheat-Bypass/raw/refs/heads/main/main.luau"))()
+
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- // GUI SETUP // --
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ProjectAurora_V7"
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
+ScreenGui.DisplayOrder = 999
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
+MainFrame.Position = UDim2.new(0.5, -100, 0.4, -50)
+MainFrame.Size = UDim2.new(0, 210, 0, 360) -- Increased size for new inputs
+MainFrame.Active = true
+MainFrame.Draggable = true
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
+
+local Title = Instance.new("TextLabel")
+Title.Parent = MainFrame
+Title.Size = UDim2.new(1, 0, 0, 35)
+Title.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+Title.Text = "Project Aroura | Rivals voidspam"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.Font = Enum.Font.GothamBold
+
+-- // HELPERS // --
+local function createInput(placeholder, pos, default)
+    local box = Instance.new("TextBox")
+    box.Parent = MainFrame
+    box.Position = pos
+    box.Size = UDim2.new(0.8, 0, 0, 25)
+    box.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    box.Text = default
+    box.PlaceholderText = placeholder
+    box.TextColor3 = Color3.new(1, 1, 1)
+    box.Font = Enum.Font.Gotham
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
+    return box
+end
+
+local function createToggle(text, pos)
+    local btn = Instance.new("TextButton")
+    btn.Parent = MainFrame
+    btn.Position = pos
+    btn.Size = UDim2.new(0.8, 0, 0, 30)
+    btn.BackgroundColor3 = Color3.fromRGB(160, 35, 35)
+    btn.Text = text .. ": OFF"
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.Code
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    return btn
+end
+
+-- // UI ELEMENTS // --
+local OrbitBtn = createToggle("ORBIT", UDim2.new(0.1, 0, 0.12, 0))
+local SpeedInp = createInput("Orbit Speed", UDim2.new(0.1, 0, 0.22, 0), "5")
+
+local VoidBtn = createToggle("VOID+", UDim2.new(0.1, 0, 0.35, 0))
+local DistInp = createInput("Void Depth", UDim2.new(0.1, 0, 0.45, 0), "-50000")
+
+local SpinBtn = createToggle("CAM SPIN", UDim2.new(0.1, 0, 0.58, 0))
+local SpinInp = createInput("Spin Speed", UDim2.new(0.1, 0, 0.68, 0), "10")
+
+local AntiRiotBtn = createToggle("ANTI-RIOT", UDim2.new(0.1, 0, 0.85, 0))
+
+-- // LOGIC // --
+local OrbitToggled, VoidToggled, SpinToggled, RiotToggled = false, false, false, false
+local OrbitSpeed, VoidDepth, SpinSpeed = 5, -50000, 10
+local OrbitAngle, SpinAngle = 0, 0
+
+OrbitBtn.MouseButton1Click:Connect(function()
+    OrbitToggled = not OrbitToggled
+    OrbitBtn.Text = OrbitToggled and "ORBIT: ON" or "ORBIT: OFF"
+    OrbitBtn.BackgroundColor3 = OrbitToggled and Color3.fromRGB(40, 160, 70) or Color3.fromRGB(160, 35, 35)
+end)
+
+VoidBtn.MouseButton1Click:Connect(function()
+    VoidToggled = not VoidToggled
+    VoidBtn.Text = VoidToggled and "VOID+: ON" or "VOID+: OFF"
+    VoidBtn.BackgroundColor3 = VoidToggled and Color3.fromRGB(40, 160, 70) or Color3.fromRGB(160, 35, 35)
+end)
+
+SpinBtn.MouseButton1Click:Connect(function()
+    SpinToggled = not SpinToggled
+    SpinBtn.Text = SpinToggled and "CAM SPIN: ON" or "CAM SPIN: OFF"
+    SpinBtn.BackgroundColor3 = SpinToggled and Color3.fromRGB(40, 160, 70) or Color3.fromRGB(160, 35, 35)
+end)
+
+AntiRiotBtn.MouseButton1Click:Connect(function()
+    RiotToggled = not RiotToggled
+    AntiRiotBtn.Text = RiotToggled and "ANTI-RIOT: ON" or "ANTI-RIOT: OFF"
+    AntiRiotBtn.BackgroundColor3 = RiotToggled and Color3.fromRGB(40, 160, 70) or Color3.fromRGB(160, 35, 35)
+end)
+
+-- Focus Lost Listeners
+SpeedInp.FocusLost:Connect(function() OrbitSpeed = tonumber(SpeedInp.Text) or 5 end)
+DistInp.FocusLost:Connect(function() VoidDepth = tonumber(DistInp.Text) or -50000 end)
+SpinInp.FocusLost:Connect(function() SpinSpeed = tonumber(SpinInp.Text) or 10 end)
+
+local function getTarget()
+    local closest, dist = nil, math.huge
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local d = (LocalPlayer.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+            if d < dist then dist = d; closest = p.Character.HumanoidRootPart end
+        end
+    end
+    return closest
+end
+
+-- // MAIN LOOP // --
+task.spawn(function()
+    while task.wait() do
+        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not hrp then continue end
+
+        -- Void Logic
+        if VoidToggled then
+            local oldCFrame = hrp.CFrame
+            local vPos = Vector3.new(math.random(-800, 800), VoidDepth + math.random(-200, 200), math.random(-800, 800))
+            hrp.CFrame = CFrame.new(vPos)
+            task.wait(0.05)
+            hrp.CFrame = RiotToggled and oldCFrame * CFrame.Angles(0, math.rad(180), 0) or oldCFrame
+        end
+
+        -- Orbit Logic
+        if OrbitToggled and not VoidToggled then
+            local target = getTarget()
+            if target then
+                OrbitAngle = OrbitAngle + (OrbitSpeed / 50)
+                local offset = Vector3.new(math.cos(OrbitAngle) * 12, 2, math.sin(OrbitAngle) * 12)
+                hrp.CFrame = CFrame.new(target.Position + offset, target.Position)
+            end
+        end
+
+        -- Camera Spin Logic
+        if SpinToggled then
+            SpinAngle = SpinAngle + math.rad(SpinSpeed)
+            Camera.CFrame = Camera.CFrame * CFrame.Angles(0, 0, SpinAngle)
+        end
+    end
+end)
