@@ -1,0 +1,361 @@
+-- iOS 26 Style Executor Settings GUI
+-- Toggle visibility on re-execution
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Check if GUI already exists and toggle with animation
+local existingGui = playerGui:FindFirstChild("ExecutorSettingsGUI")
+if existingGui then
+    local existingFrame = existingGui:FindFirstChild("MainFrame")
+    if existingFrame then
+        if existingGui.Enabled then
+            -- Slide out animation
+            TweenService:Create(existingFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+                Position = UDim2.new(0.5, 0, 1.5, 0)
+            }):Play()
+            wait(0.3)
+            existingGui.Enabled = false
+        else
+            existingGui.Enabled = true
+            existingFrame.Position = UDim2.new(0.5, 0, 1.5, 0)
+            TweenService:Create(existingFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Position = UDim2.new(0.5, -350, 0.5, -90)
+            }):Play()
+        end
+    end
+    return
+end
+
+-- Create ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ExecutorSettingsGUI"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+
+-- Main Frame (iOS 26 frosted glass style) - Horizontal layout
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 700, 0, 180)
+mainFrame.Position = UDim2.new(0.5, -350, 0.5, -90)
+mainFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 30)
+mainFrame.BackgroundTransparency = 0.1
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+-- Add rounded corners
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 28)
+mainCorner.Parent = mainFrame
+
+-- Add shadow effect
+local shadow = Instance.new("ImageLabel")
+shadow.Name = "Shadow"
+shadow.BackgroundTransparency = 1
+shadow.Position = UDim2.new(0, -15, 0, -15)
+shadow.Size = UDim2.new(1, 30, 1, 30)
+shadow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+shadow.ImageTransparency = 0.7
+shadow.ScaleType = Enum.ScaleType.Slice
+shadow.SliceCenter = Rect.new(10, 10, 10, 10)
+shadow.ZIndex = 0
+shadow.Parent = mainFrame
+
+-- Header
+local header = Instance.new("Frame")
+header.Name = "Header"
+header.Size = UDim2.new(1, 0, 0, 50)
+header.BackgroundColor3 = Color3.fromRGB(44, 44, 46)
+header.BackgroundTransparency = 0.3
+header.BorderSizePixel = 0
+header.Parent = mainFrame
+
+local headerCorner = Instance.new("UICorner")
+headerCorner.CornerRadius = UDim.new(0, 20)
+headerCorner.Parent = header
+
+local headerBottom = Instance.new("Frame")
+headerBottom.Size = UDim2.new(1, 0, 0, 20)
+headerBottom.Position = UDim2.new(0, 0, 1, -20)
+headerBottom.BackgroundColor3 = Color3.fromRGB(44, 44, 46)
+headerBottom.BackgroundTransparency = 0.3
+headerBottom.BorderSizePixel = 0
+headerBottom.Parent = header
+
+-- Title
+local title = Instance.new("TextLabel")
+title.Name = "Title"
+title.Size = UDim2.new(1, -40, 1, 0)
+title.Position = UDim2.new(0, 20, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "Executor Settings"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 18
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = header
+
+-- Content Container
+local contentFrame = Instance.new("ScrollingFrame")
+contentFrame.Name = "ContentFrame"
+contentFrame.Size = UDim2.new(1, -40, 1, -90)
+contentFrame.Position = UDim2.new(0, 20, 0, 80)
+contentFrame.BackgroundTransparency = 1
+contentFrame.BorderSizePixel = 0
+contentFrame.ScrollBarThickness = 4
+contentFrame.ScrollBarImageColor3 = Color3.fromRGB(99, 99, 102)
+contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+contentFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+contentFrame.Parent = mainFrame
+
+local contentLayout = Instance.new("UIListLayout")
+contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+contentLayout.Padding = UDim.new(0, 12)
+contentLayout.Parent = contentFrame
+
+-- Helper function to create iOS-style buttons
+local function createButton(text, layoutOrder, callback)
+    local button = Instance.new("TextButton")
+    button.Name = text .. "Button"
+    button.Size = UDim2.new(1, 0, 0, 50)
+    button.BackgroundColor3 = Color3.fromRGB(58, 58, 60)
+    button.Text = text
+    button.TextColor3 = Color3.fromRGB(10, 132, 255)
+    button.Font = Enum.Font.Gotham
+    button.TextSize = 16
+    button.BorderSizePixel = 0
+    button.LayoutOrder = layoutOrder
+    button.Parent = contentFrame
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 14)
+    corner.Parent = button
+    
+    -- Hover effect
+    button.MouseEnter:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(72, 72, 74)}):Play()
+    end)
+    
+    button.MouseLeave:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(58, 58, 60)}):Play()
+    end)
+    
+    button.MouseButton1Click:Connect(function()
+        -- Press animation
+        TweenService:Create(button, TweenInfo.new(0.1), {Size = UDim2.new(1, 0, 0, 48)}):Play()
+        wait(0.1)
+        TweenService:Create(button, TweenInfo.new(0.1), {Size = UDim2.new(1, 0, 0, 50)}):Play()
+        if callback then callback() end
+    end)
+    
+    return button
+end
+
+-- Helper function to create textbox input
+local function createTextBox(labelText, placeholder, layoutOrder)
+    local container = Instance.new("Frame")
+    container.Name = labelText .. "Container"
+    container.Size = UDim2.new(1, 0, 0, 80)
+    container.BackgroundTransparency = 1
+    container.LayoutOrder = layoutOrder
+    container.Parent = contentFrame
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 0, 20)
+    label.BackgroundTransparency = 1
+    label.Text = labelText
+    label.TextColor3 = Color3.fromRGB(174, 174, 178)
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 13
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = container
+    
+    local textBox = Instance.new("TextBox")
+    textBox.Name = labelText .. "Input"
+    textBox.Size = UDim2.new(1, 0, 0, 50)
+    textBox.Position = UDim2.new(0, 0, 0, 30)
+    textBox.BackgroundColor3 = Color3.fromRGB(58, 58, 60)
+    textBox.Text = ""
+    textBox.PlaceholderText = placeholder
+    textBox.PlaceholderColor3 = Color3.fromRGB(99, 99, 102)
+    textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textBox.Font = Enum.Font.Gotham
+    textBox.TextSize = 16
+    textBox.BorderSizePixel = 0
+    textBox.ClearTextOnFocus = false
+    textBox.Parent = container
+    
+    local textBoxCorner = Instance.new("UICorner")
+    textBoxCorner.CornerRadius = UDim.new(0, 14)
+    textBoxCorner.Parent = textBox
+    
+    local padding = Instance.new("UIPadding")
+    padding.PaddingLeft = UDim.new(0, 15)
+    padding.PaddingRight = UDim.new(0, 15)
+    padding.Parent = textBox
+    
+    return textBox
+end
+
+-- FPS Textbox
+local fpsInput = createTextBox("FPS Cap", "Enter FPS (e.g., 60)", 1)
+
+-- Rejoin Button
+createButton("🔄 Rejoin Server", 2, function()
+    local TeleportService = game:GetService("TeleportService")
+    TeleportService:Teleport(game.PlaceId, player)
+end)
+
+-- Server Hop Button
+createButton("🌐 Server Hop", 3, function()
+    local TeleportService = game:GetService("TeleportService")
+    local HttpService = game:GetService("HttpService")
+    
+    local success, servers = pcall(function()
+        return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+    end)
+    
+    if success and servers and servers.data then
+        local currentServerId = game.JobId
+        for _, server in ipairs(servers.data) do
+            if server.id ~= currentServerId and server.playing < server.maxPlayers then
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, player)
+                return
+            end
+        end
+    end
+end)
+
+-- Song Database
+local songs = {
+    ["unhappy"] = "rbxassetid://88523902860927",
+    ["hunter eyes"] = "rbxassetid://139957878565852",
+    ["pain"] = "rbxassetid://90214463856694"
+}
+
+-- Music Section Header
+local musicHeader = Instance.new("TextLabel")
+musicHeader.Name = "MusicHeader"
+musicHeader.Size = UDim2.new(1, 0, 0, 30)
+musicHeader.BackgroundTransparency = 1
+musicHeader.Text = "🎵 Play Songs"
+musicHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+musicHeader.Font = Enum.Font.GothamBold
+musicHeader.TextSize = 16
+musicHeader.TextXAlignment = Enum.TextXAlignment.Left
+musicHeader.LayoutOrder = 4
+musicHeader.Parent = contentFrame
+
+-- Create song buttons
+local songOrder = 5
+for songName, songId in pairs(songs) do
+    createButton("♪ " .. songName, songOrder, function()
+        -- Create or get sound
+        local sound = workspace:FindFirstChild("ExecutorMusic")
+        if not sound then
+            sound = Instance.new("Sound")
+            sound.Name = "ExecutorMusic"
+            sound.Parent = workspace
+        end
+        
+        sound.SoundId = songId
+        sound.Volume = 0.5
+        sound.Looped = true
+        sound:Play()
+        
+        -- Notification
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Now Playing";
+            Text = songName;
+            Duration = 3;
+        })
+    end)
+    songOrder = songOrder + 1
+end
+
+-- Stop Music Button
+createButton("⏹ Stop Music", songOrder, function()
+    local sound = workspace:FindFirstChild("ExecutorMusic")
+    if sound then
+        sound:Stop()
+    end
+end)
+
+-- Show Console Button
+createButton("📋 Show Console", songOrder + 1, function()
+    -- Toggle Developer Console
+    game:GetService("StarterGui"):SetCore("DevConsoleVisible", true)
+end)
+
+-- Apply FPS function
+fpsInput.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        local fps = tonumber(fpsInput.Text)
+        if fps and fps > 0 then
+            setfpscap(fps)
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = "FPS Cap Set";
+                Text = "FPS capped at " .. fps;
+                Duration = 3;
+            })
+        end
+    end
+end)
+
+-- Close button functionality
+closeButton.MouseButton1Click:Connect(function()
+    screenGui.Enabled = false
+end)
+
+-- Make draggable
+local dragging = false
+local dragInput
+local dragStart
+local startPos
+
+local function update(input)
+    local delta = input.Position - dragStart
+    mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+header.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        update(input)
+    end
+end)
+
+-- Entrance animation
+mainFrame.Size = UDim2.new(0, 0, 0, 0)
+mainFrame.BackgroundTransparency = 1
+
+TweenService:Create(mainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0, 380, 0, 520),
+    BackgroundTransparency = 0.1
+}):Play()
