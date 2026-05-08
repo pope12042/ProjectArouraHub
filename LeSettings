@@ -237,7 +237,7 @@ end)
 local songs = {
     ["unhappy"] = "rbxassetid://88523902860927",
     ["hunter eyes"] = "rbxassetid://139957878565852",
-    ["pain"] = "rbxassetid://90214463856694"
+    ["leaveamsg"] = "rbxassetid://131006044603525"
 }
 
 -- Music Section Header
