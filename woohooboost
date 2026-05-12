@@ -1,0 +1,120 @@
+-- Configuration
+local UI_NAME = "ProjectAroura_Classic"
+local TOGGLE_ON_COLOR = Color3.fromRGB(15, 45, 30) -- Deep Dark Green
+local TOGGLE_OFF_COLOR = Color3.fromRGB(45, 15, 15) -- Deep Dark Red
+local BOOST_SPEED = 200
+local NORMAL_SPEED = 16
+
+-- Services
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local isEnabled = false
+
+-- Cleanup
+if CoreGui:FindFirstChild(UI_NAME) then
+    CoreGui[UI_NAME]:Destroy()
+end
+
+-- Create UI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = UI_NAME
+ScreenGui.Parent = CoreGui
+
+local MainButton = Instance.new("TextButton")
+MainButton.Size = UDim2.new(0, 150, 0, 50)
+MainButton.Position = UDim2.new(0.5, -75, 0.8, 0)
+MainButton.BackgroundColor3 = TOGGLE_OFF_COLOR
+MainButton.Text = "Ready lol"
+MainButton.TextColor3 = Color3.fromRGB(200, 200, 200)
+MainButton.Font = Enum.Font.Roboto
+MainButton.TextSize = 15
+MainButton.AutoButtonColor = false -- Disables the default bright flash
+MainButton.Parent = ScreenGui
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 6)
+Corner.Parent = MainButton
+
+local Stroke = Instance.new("UIStroke")
+Stroke.Thickness = 1.8
+Stroke.Color = Color3.fromRGB(50, 50, 50)
+Stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+Stroke.Parent = MainButton
+
+-- Smooth Color Transition Function
+local function fadeColor(goalColor)
+    TweenService:Create(MainButton, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {BackgroundColor3 = goalColor}):Play()
+end
+
+-- CLASSIC DRAGGABLE LOGIC
+local dragging, dragInput, dragStart, startPos
+
+MainButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainButton.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+MainButton.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        -- Direct positioning for "classic" 1:1 response
+        MainButton.Position = UDim2.new(
+            startPos.X.Scale, 
+            startPos.X.Offset + delta.X, 
+            startPos.Y.Scale, 
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- Logic Toggle
+MainButton.MouseButton1Click:Connect(function()
+    isEnabled = not isEnabled
+    if not isEnabled then
+        fadeColor(TOGGLE_OFF_COLOR)
+        MainButton.Text = "Ready lol"
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            player.Character.Humanoid.WalkSpeed = NORMAL_SPEED
+        end
+    else
+        fadeColor(TOGGLE_ON_COLOR)
+    end
+end)
+
+-- Boost Loop
+RunService.Heartbeat:Connect(function()
+    local character = player.Character
+    local humanoid = character and character:FindFirstChild("Humanoid")
+    
+    if isEnabled and humanoid then
+        local state = humanoid:GetState()
+        
+        if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall then
+            humanoid.WalkSpeed = BOOST_SPEED
+            MainButton.Text = "Boosting"
+        else
+            humanoid.WalkSpeed = NORMAL_SPEED
+            MainButton.Text = "Active"
+        end
+    end
+end)
