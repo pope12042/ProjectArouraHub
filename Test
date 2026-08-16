@@ -1,42 +1,18 @@
---[[
-    Project Aurora | rivals beta  (VEIL v22 + Server-Side Shot Registration)
-    v21 body (the one that renders) + this round:
-     * RAGEBOT REWORKED to be the magic-bullet hit path + auto-fire, with
-       NO hitbox freeze. The old void-drop / random-CFrame spoof / restore
-       dance is GONE. When rage flips on we auto-init the desync infra (the
-       same StartShooting hook + 1-tick root desync the Magic Bullet toggle
-       uses, guarded by desyncActive so a manual toggle never double-inits),
-       then an auto-fire driver holds the gun's trigger field for one frame
-       per pulse so the ENGINE calls Gun.StartShooting with correct args and
-       magic bullet rewrites that shot onto the locked enemy. Rate = the new
-       "Auto Fire Rate" slider (one shot per pulse, no spam). If the gun has
-       no boolean trigger field under any known name, it falls back to a
-       direct self:StartShooting() on that same pulse. The calm-camera layer
-       stays so the desync's 1-tick root hop never flickers your view; you
-       keep moving/looking normally. nearestEnemy (team-aware) feeds the lock
-       so rage never targets a teammate.
-     * SERVER-SIDE SHOT REGISTRATION: intercepts the actual FireServer call
-       that Gun.StartShooting makes internally. Rewrites origin, direction,
-       hit instance, distance, and CFrame args so the server's own raycast
-       validation sees a clean shot on the locked target. Chains after the
-       existing AC bypass namecall hook.
-     * (carried from v21) AMMO TRACKER readable text; ADS AIM ASSIST fixed
-       for mobile (Aim Trigger dropdown); STATUS TEXT FOLLOW dropdown;
-       FOV GRADIENT RING + FOV FOLLOW dropdown (viewmodel gun-tip).
-    AC BYPASS IS THE FIRST THING INSIDE THE OUTER pcall.
-]]
+--[[ Project Aurora | rivals beta (VEIL v29)
+     ONE namecall hook. Shim-only Drawing. ESP tracers removed.
+     NEW Extra tab: Gun Chams, No Shoot Anim, Ragebot curves,
+     Void Hide, Bullet Tracers (3D), In Round Detector. ]]
 
-local ok, err = pcall(function()
-
-pcall(function() warn("[Aurora] script start") end)
-
---[[================================================================
-    AC BYPASS — VERY TOP
-================================================================]]
-
+--[[ AC BYPASS — OUTSIDE OUTER PCALL ]]
 pcall(function()
     local lp = cloneref(game:GetService("Players")).LocalPlayer
     local oldKick = lp.Kick
+    hookfunction(oldKick, newcclosure(function(self, ...)
+        if self == lp then return end
+        return oldKick(self, ...)
+    end))
+end)
+pcall(function()
     local mtHook
     mtHook = hookfunction(getrenv().setmetatable, newcclosure(function(t, mt)
         if mt and type(mt) == "table" and rawget(mt, "__mode") then
@@ -50,13 +26,11 @@ pcall(function()
         end
         return mtHook(t, mt)
     end))
-    hookfunction(oldKick, newcclosure(function(self, ...)
-        if self == lp then return end
-        return oldKick(self, ...)
-    end))
 end)
 
---[[ SERVICES ]]
+local ok, err = pcall(function()
+
+pcall(function() warn("[Aurora] script start") end)
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -70,8 +44,186 @@ local InsertService     = game:GetService("InsertService")
 local LocalPlayer       = Players.LocalPlayer
 local Camera            = workspace.CurrentCamera
 
---[[ EXECUTOR FUNCTIONS ]]
+--[[ DRAWING SHIM — ONLY PATH. NO NATIVE PROBE ]]
+do
+    local shimGui = Instance.new("ScreenGui")
+    shimGui.Name = "VEIL_DRAWING_SHIM"
+    shimGui.IgnoreGuiInset = true
+    shimGui.DisplayOrder = 999
+    local okp, holder = pcall(function() return gethui() end)
+    shimGui.Parent = (okp and holder) or game:GetService("CoreGui")
 
+    local FONTS = {
+        [0] = Enum.Font.Gotham, [1] = Enum.Font.SourceSans,
+        [2] = Enum.Font.RobotoMono, [3] = Enum.Font.Code, [4] = Enum.Font.Ubuntu,
+    }
+    local function fontOf(v)
+        if type(v) == "number" then return FONTS[math.clamp(math.floor(v), 0, 4)] or Enum.Font.Gotham end
+        if typeof(v) == "EnumItem" then return v end
+        return Enum.Font.Gotham
+    end
+    local function safe2(v)
+        if typeof(v) ~= "Vector2" then return nil end
+        if v.X ~= v.X or v.Y ~= v.Y then return nil end
+        return v
+    end
+    local function safeN(v)
+        if type(v) ~= "number" or v ~= v then return nil end
+        return v
+    end
+
+    local function newSquare()
+        local f = Instance.new("Frame")
+        f.BorderSizePixel = 0; f.BackgroundTransparency = 1; f.Parent = shimGui
+        local s = Instance.new("UIStroke")
+        s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s.Thickness = 1; s.Parent = f
+        return setmetatable({}, {
+            __index = function(_, k)
+                if k == "Visible" then return f.Visible
+                elseif k == "Color" then return f.BackgroundColor3
+                elseif k == "Position" then return Vector2.new(f.Position.X.Offset, f.Position.Y.Offset)
+                elseif k == "Size" then return Vector2.new(f.Size.X.Offset, f.Size.Y.Offset)
+                elseif k == "Thickness" then return s.Thickness
+                elseif k == "Filled" then return f.BackgroundTransparency < 1
+                elseif k == "ZIndex" then return f.ZIndex
+                elseif k == "Remove" then return function() f:Destroy() end end
+            end,
+            __newindex = function(_, k, v)
+                if k == "Visible" then f.Visible = v
+                elseif k == "Color" then f.BackgroundColor3 = v; s.Color = v
+                elseif k == "Position" then local p = safe2(v); if p then f.Position = UDim2.fromOffset(p.X, p.Y) end
+                elseif k == "Size" then local p = safe2(v); if p then f.Size = UDim2.fromOffset(math.max(0,p.X), math.max(0,p.Y)) end
+                elseif k == "Thickness" then local n = safeN(v); if n then s.Thickness = n end
+                elseif k == "Filled" then f.BackgroundTransparency = v and 0 or 1
+                elseif k == "ZIndex" then f.ZIndex = v
+                end
+            end,
+        })
+    end
+
+    local function newText()
+        local t = Instance.new("TextLabel")
+        t.BackgroundTransparency = 1
+        t.TextXAlignment = Enum.TextXAlignment.Left
+        t.TextYAlignment = Enum.TextYAlignment.Top
+        t.Text = ""; t.TextColor3 = Color3.new(1,1,1); t.TextSize = 14
+        t.TextStrokeTransparency = 1; t.Parent = shimGui
+        return setmetatable({}, {
+            __index = function(_, k)
+                if k == "Visible" then return t.Visible
+                elseif k == "Text" then return t.Text
+                elseif k == "Color" then return t.TextColor3
+                elseif k == "Size" then return t.TextSize
+                elseif k == "Center" then return t.AnchorPoint.X > 0
+                elseif k == "Outline" then return t.TextStrokeTransparency < 1
+                elseif k == "Position" then return Vector2.new(t.Position.X.Offset, t.Position.Y.Offset)
+                elseif k == "Font" then return t.Font
+                elseif k == "TextBounds" then return t.TextBounds
+                elseif k == "ZIndex" then return t.ZIndex
+                elseif k == "Remove" then return function() t:Destroy() end end
+            end,
+            __newindex = function(_, k, v)
+                if k == "Visible" then t.Visible = v
+                elseif k == "Text" then t.Text = tostring(v)
+                elseif k == "Color" then t.TextColor3 = v
+                elseif k == "Size" then local n = safeN(v); if n then t.TextSize = math.clamp(n, 4, 96) end
+                elseif k == "Center" then t.AnchorPoint = Vector2.new(v and 0.5 or 0, 0)
+                elseif k == "Outline" then t.TextStrokeTransparency = v and 0 or 1
+                elseif k == "Position" then local p = safe2(v); if p then t.Position = UDim2.fromOffset(p.X, p.Y) end
+                elseif k == "Font" then t.Font = fontOf(v)
+                elseif k == "ZIndex" then t.ZIndex = v
+                end
+            end,
+        })
+    end
+
+    local function newLine()
+        local f = Instance.new("Frame")
+        f.BorderSizePixel = 0; f.AnchorPoint = Vector2.new(0, 0.5); f.Parent = shimGui
+        local from, to = Vector2.new(), Vector2.new()
+        local thick = 1
+        local function update()
+            local d = to - from
+            local len = d.Magnitude
+            if len ~= len then return end
+            f.Size = UDim2.fromOffset(len, thick)
+            f.Position = UDim2.fromOffset(from.X, from.Y)
+            f.Rotation = math.deg(math.atan2(d.Y, d.X))
+        end
+        return setmetatable({}, {
+            __index = function(_, k)
+                if k == "Visible" then return f.Visible
+                elseif k == "From" then return from
+                elseif k == "To" then return to
+                elseif k == "Thickness" then return thick
+                elseif k == "Color" then return f.BackgroundColor3
+                elseif k == "Transparency" then return f.BackgroundTransparency
+                elseif k == "ZIndex" then return f.ZIndex
+                elseif k == "Remove" then return function() f:Destroy() end end
+            end,
+            __newindex = function(_, k, v)
+                if k == "Visible" then f.Visible = v
+                elseif k == "From" then local p = safe2(v); if p then from = p; update() end
+                elseif k == "To" then local p = safe2(v); if p then to = p; update() end
+                elseif k == "Thickness" then local n = safeN(v); if n then thick = n; update() end
+                elseif k == "Color" then f.BackgroundColor3 = v
+                elseif k == "Transparency" then local n = safeN(v); if n then f.BackgroundTransparency = math.clamp(n, 0, 1) end
+                elseif k == "ZIndex" then f.ZIndex = v
+                end
+            end,
+        })
+    end
+
+    local function newCircle()
+        local f = Instance.new("Frame")
+        f.BorderSizePixel = 0; f.BackgroundTransparency = 1
+        f.AnchorPoint = Vector2.new(0.5, 0.5); f.Parent = shimGui
+        local c = Instance.new("UICorner"); c.Parent = f
+        local s = Instance.new("UIStroke"); s.Parent = f
+        local radius = 0
+        local function applySize()
+            f.Size = UDim2.fromOffset(radius * 2, radius * 2)
+            c.CornerRadius = UDim.new(0, radius)
+        end
+        return setmetatable({}, {
+            __index = function(_, k)
+                if k == "Visible" then return f.Visible
+                elseif k == "Position" then return Vector2.new(f.Position.X.Offset, f.Position.Y.Offset)
+                elseif k == "Radius" then return radius
+                elseif k == "Color" then return f.BackgroundColor3
+                elseif k == "Thickness" then return s.Thickness
+                elseif k == "Filled" then return f.BackgroundTransparency < 1
+                elseif k == "ZIndex" then return f.ZIndex
+                elseif k == "Remove" then return function() f:Destroy() end end
+            end,
+            __newindex = function(_, k, v)
+                if k == "Visible" then f.Visible = v
+                elseif k == "Position" then local p = safe2(v); if p then f.Position = UDim2.fromOffset(p.X, p.Y) end
+                elseif k == "Radius" then local n = safeN(v); if n then radius = math.max(0, n); applySize() end
+                elseif k == "Color" then f.BackgroundColor3 = v; s.Color = v
+                elseif k == "Thickness" then local n = safeN(v); if n then s.Thickness = n end
+                elseif k == "Filled" then f.BackgroundTransparency = v and 0 or 1
+                elseif k == "ZIndex" then f.ZIndex = v
+                end
+            end,
+        })
+    end
+
+    getgenv().VEIL_SHIM = {
+        api = {
+            new = function(kind)
+                if kind == "Square" then return newSquare()
+                elseif kind == "Text" then return newText()
+                elseif kind == "Line" then return newLine()
+                elseif kind == "Circle" then return newCircle()
+                end
+                return newSquare()
+            end,
+        },
+    }
+end
+
+--[[ EXECUTOR FUNCTIONS ]]
 local hookmetamethod    = hookmetamethod
 local getrawmetatable   = getrawmetatable
 local setreadonly       = setreadonly
@@ -87,11 +239,10 @@ local isfile            = isfile
 local readfile          = readfile
 local writefile         = writefile
 local gethui            = gethui
-local Drawing           = Drawing
+local Drawing           = getgenv().VEIL_SHIM.api
 local cloneref          = cloneref or function(x) return x end
 
 --[[ SHARED STATE ]]
-
 local UNLOCK = {
     fightCtrl = nil, useItemRemote = nil, datCtrl = nil,
     cosLib = nil, equipRem = nil, favRem = nil,
@@ -103,37 +254,22 @@ local rageTargetPart  = nil
 local SnowEnabled     = false
 local AmmoTrackEnabled = false
 local TargetHudEnabled = false
-
--- what input engages the aim-assist pull (ADS aim assist)
 local AimTrigger = "RMB or Aim Btn"
-
--- magic-bullet / desync mirror (declared up top so the rage functions, the
--- desync builder, and the Magic Bullet toggle all share ONE pair of locals)
 local DesyncMod      = nil
-local desyncActive   = false   -- true while the StartShooting hook is live
-local rageAutoDesync = false   -- rage turned the desync on; rage owns shutdown
-
--- shared by the rapid-fire hook and the rage auto-fire hook
+local desyncActive   = false
+local rageAutoDesync = false
 local GunModule, GunOrigUpdate, GunHooked = nil, nil, false
-
--- rage auto-fire driver state
 local AutoFireHooked = false
 local AutoFireRate   = 12
-local afT  = 0   -- pulse accumulator (Update-hook path)
-local afT2 = 0   -- pulse accumulator (heartbeat direct-call fallback)
+local afT  = 0
+local afT2 = 0
 local SHOOT_FIELDS = {
     "_shooting","Shooting","_isShooting","IsShooting","shooting",
     "_fire","Firing","_isFiring","IsFiring","firing",
     "_triggerHeld","TriggerHeld","_holdingFire","HoldingFire","_isFiringInput",
 }
-
--- server-side shot registration state (declared up top so the namecall
--- chain and the discovery logic share one set of locals)
-local ShootRemote = nil
-local ShootRemoteName = nil
-
+local SHOOT_STATE = { remote = nil, getTarget = nil }
 local TITLE = "Project Aurora | rivals beta"
-
 local DF_UI, DF_SYS, DF_PLEX, DF_MONO, DF_UBUNTU = 0, 1, 2, 3, 4
 local DRAW_FONT_NAMES = {
     ui = 0, system = 1, plex = 2, mono = 3, monospace = 3,
@@ -153,18 +289,13 @@ local function setFont(obj, idx)
     pcall(function() obj.Font = idx end)
 end
 
---[[================================================================
-    AC LAYER 2 — namecall
-================================================================]]
-
+--[[ THE ONLY namecall HOOK ]]
 local mt = getrawmetatable(game)
 setreadonly(mt, false)
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local method = getnamecallmethod()
-
     if method == "Kick" and self == LocalPlayer then return end
-
     if method == "FireServer" or method == "InvokeServer" then
         local name = self.Name:lower()
         if name:find("exploit") or name:find("cheat") or name:find("detect") or
@@ -173,6 +304,50 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
            name:find("anticheat") or name:find("ac_") then
             return
         end
+
+        if SHOOT_STATE.remote and self == SHOOT_STATE.remote and SHOOT_STATE.getTarget then
+            local targetPart = SHOOT_STATE.getTarget()
+            if targetPart then
+                local char = LocalPlayer.Character
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                if root then
+                    local origin = root.Position + Vector3.new(0, 1.5, 0)
+                    local targetPos = targetPart.Position
+                    local direction = (targetPos - origin).Unit
+                    local distance = (targetPos - origin).Magnitude
+                    local args = {...}
+                    for i, arg in ipairs(args) do
+                        if typeof(arg) == "Vector3" then
+                            args[i] = (i == 1 or typeof(args[i-1]) ~= "Vector3") and origin or direction
+                        elseif typeof(arg) == "CFrame" then
+                            args[i] = CFrame.new(origin, targetPos)
+                        elseif typeof(arg) == "Instance" and arg:IsA("BasePart") then
+                            args[i] = targetPart
+                        elseif type(arg) == "number" and arg > 10 and arg < 5000 then
+                            args[i] = distance
+                        elseif type(arg) == "table" then
+                            for _, key in ipairs({"Origin","origin","Start","start","From","from","Position","position"}) do
+                                if rawget(arg, key) and typeof(rawget(arg, key)) == "Vector3" then arg[key] = origin end
+                            end
+                            for _, key in ipairs({"Direction","direction","Dir","dir","LookVector","lookVector"}) do
+                                if rawget(arg, key) and typeof(rawget(arg, key)) == "Vector3" then arg[key] = direction end
+                            end
+                            for _, key in ipairs({"HitPart","hitPart","Hit","hit","Target","target","Part","part","Instance","instance"}) do
+                                if rawget(arg, key) and typeof(rawget(arg, key)) == "Instance" then arg[key] = targetPart end
+                            end
+                            for _, key in ipairs({"Distance","distance","Dist","dist","Range","range","Magnitude","magnitude"}) do
+                                if rawget(arg, key) and type(rawget(arg, key)) == "number" then arg[key] = distance end
+                            end
+                            for _, key in ipairs({"CFrame","cframe","CF","cf","LookCFrame","lookCFrame"}) do
+                                if rawget(arg, key) and typeof(rawget(arg, key)) == "CFrame" then arg[key] = CFrame.new(origin, targetPos) end
+                            end
+                        end
+                    end
+                    return oldNamecall(self, unpack(args))
+                end
+            end
+        end
+
         if UnlockActive and UNLOCK.equipRem and self == UNLOCK.equipRem then
             local a = {...}
             local wn, ct, cn, opts = a[1], a[2], a[3], a[4] or {}
@@ -192,7 +367,6 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
             return oldNamecall(self, ...)
         end
     end
-
     return oldNamecall(self, ...)
 end)
 setreadonly(mt, true)
@@ -233,14 +407,12 @@ pcall(function()
         end)
     end)
 end)
-
 pcall(function()
     local c = LocalPlayer.CharacterAdded:Connect(function()
         task.wait(0.5); nukeConnections()
     end)
     myConnections[#myConnections + 1] = c
 end)
-
 pcall(function()
     local function proc(o)
         pcall(function()
@@ -255,7 +427,6 @@ pcall(function()
     for _, o in ipairs(game:GetDescendants()) do proc(o) end
     game.DescendantAdded:Connect(proc)
 end)
-
 pcall(function()
     local rf = game:GetService("ReplicatedFirst")
     local tgt = rf:FindFirstChild("LocalScript3") or rf:WaitForChild("LocalScript3", 5)
@@ -275,10 +446,7 @@ pcall(function()
     end
 end)
 
---[[================================================================
-    WORLD POST-PROCESSING + SKYBOX
-================================================================]]
-
+--[[ WORLD POST-PROCESSING + SKYBOX ]]
 pcall(function()
     for _, e in ipairs(Lighting:GetChildren()) do
         if e.Name == "VEIL_CC_WORLD" or e.Name == "VEIL_CC_BLOOM" or e.Name == "VEIL_BLOOM" then
@@ -286,31 +454,22 @@ pcall(function()
         end
     end
 end)
-
 local ccWorld = Instance.new("ColorCorrectionEffect")
 ccWorld.Name = "VEIL_CC_WORLD"; ccWorld.Enabled = false
 ccWorld.TintColor = Color3.new(1,1,1); ccWorld.Brightness = 0
 ccWorld.Contrast = 0; ccWorld.Saturation = 0; ccWorld.Parent = Lighting
-
 local ccBloom = Instance.new("ColorCorrectionEffect")
 ccBloom.Name = "VEIL_CC_BLOOM"; ccBloom.Enabled = false
 ccBloom.TintColor = Color3.new(1,1,1); ccBloom.Parent = Lighting
-
 local bloomFx = Instance.new("BloomEffect")
 bloomFx.Name = "VEIL_BLOOM"; bloomFx.Enabled = false
 bloomFx.Intensity = 1; bloomFx.Size = 24; bloomFx.Threshold = 1; bloomFx.Parent = Lighting
-
 local SKYBOXS = {
-    ["Off"]         = 0,
-    ["Blue Sky"]    = 16010926,
-    ["Indra"]       = 13105278470,
-    ["Pitch Black"] = 1180171020,
-    ["Sunset"]      = 271042516,
-    ["Night Sky"]   = 156956310,
-    ["Deep Space"]  = 11378884,
+    ["Off"] = 0, ["Blue Sky"] = 16010926, ["Indra"] = 13105278470,
+    ["Pitch Black"] = 1180171020, ["Sunset"] = 271042516,
+    ["Night Sky"] = 156956310, ["Deep Space"] = 11378884,
 }
 local SKYBOX_ORDER = {"Off", "Blue Sky", "Indra", "Pitch Black", "Sunset", "Night Sky", "Deep Space"}
-
 local function clearSkybox()
     pcall(function()
         for _, c in ipairs(Lighting:GetChildren()) do
@@ -318,7 +477,6 @@ local function clearSkybox()
         end
     end)
 end
-
 local function applySkybox(id)
     clearSkybox()
     if not id or id == 0 then return end
@@ -327,29 +485,22 @@ local function applySkybox(id)
         pcall(function() Library:Notify("Skybox load failed (bad id?)", 3) end); return
     end
     local sky = asset:FindFirstChildWhichIsA("Skybox", true)
-    if sky then
-        sky.Parent = Lighting
+    if sky then sky.Parent = Lighting
     else
         pcall(function() Library:Notify("No Skybox inside that asset", 3) end)
         pcall(function() asset:Destroy() end)
     end
 end
 
---[[================================================================
-    FIRE-INTENT + AIM-INTENT (ADS) tracking
-================================================================]]
-
+--[[ FIRE-INTENT + AIM-INTENT tracking ]]
 local lastFireTick = 0
 local mouse1Held = false
 local activeTouches = {}
 local fireButton = nil
 local fireButtonSearched = false
-
--- aim / ADS button (mobile has no MouseButton2, so we watch the GUI button)
 local aimButton = nil
 local aimButtonSearched = false
 local activeAimTouches = {}
-
 local function searchFireButton()
     if fireButtonSearched then return end
     fireButtonSearched = true
@@ -367,7 +518,6 @@ local function searchFireButton()
     pcall(function() scan(LocalPlayer:FindFirstChild("PlayerGui")) end)
     pcall(function() local h = gethui and gethui(); if h then scan(h) end end)
 end
-
 local function searchAimButton()
     if aimButtonSearched then return end
     aimButtonSearched = true
@@ -385,10 +535,8 @@ local function searchAimButton()
     pcall(function() scan(LocalPlayer:FindFirstChild("PlayerGui")) end)
     pcall(function() local h = gethui and gethui(); if h then scan(h) end end)
 end
-
 pcall(function() task.delay(2.0, searchFireButton) end)
 pcall(function() task.delay(2.2, searchAimButton) end)
--- re-scan when the gui rebuilds (respawn / menu open)
 pcall(function()
     LocalPlayer.PlayerGui.DescendantAdded:Connect(function(d)
         if d:IsA("GuiButton") then
@@ -397,13 +545,11 @@ pcall(function()
         end
     end)
 end)
-
 local function posInButton(pos, btn)
     if not btn then return false end
     local ap = btn.AbsolutePosition; local as = btn.AbsoluteSize
     return pos.X >= ap.X and pos.X <= ap.X + as.X and pos.Y >= ap.Y and pos.Y <= ap.Y + as.Y
 end
-
 local function isFireTouch(pos)
     if fireButton and posInButton(pos, fireButton) then return true end
     if not fireButtonSearched then return false end
@@ -413,19 +559,15 @@ local function isFireTouch(pos)
     end
     return false
 end
-
 local function isAimTouch(pos)
     if aimButton and posInButton(pos, aimButton) then return true end
-    return false   -- no region fallback for aim: use the "Always" mode if the button isn't found
+    return false
 end
-
 local function isFiring()
     if mouse1Held then return true end
     for _, pos in pairs(activeTouches) do if isFireTouch(pos) then return true end end
     return false
 end
-
--- is the player aiming down sights, per the chosen trigger mode?
 local function isAiming()
     local m = AimTrigger
     if m == "Always" then return true end
@@ -434,9 +576,8 @@ local function isAiming()
     for _ in pairs(activeAimTouches) do ab = true; break end
     if m == "RMB (PC)" then return rmb end
     if m == "Aim Btn (Mobile)" then return ab end
-    return rmb or ab   -- "RMB or Aim Btn"
+    return rmb or ab
 end
-
 pcall(function()
     UserInputService.InputBegan:Connect(function(io)
         if io.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -466,15 +607,13 @@ pcall(function()
     end)
 end)
 
---[[================================================================
-    SCREEN-SPACE HELPERS + STATUS + HUD PRIMITIVES
-================================================================]]
-
+--[[ SCREEN-SPACE HELPERS + HUD PRIMITIVES ]]
 local screenGui = Instance.new("ScreenGui")
 screenGui.IgnoreGuiInset = true; screenGui.DisplayOrder = -9; screenGui.Name = "VEIL_SCREEN_REF"
-local okH, h = pcall(function() return gethui() end)
-screenGui.Parent = (okH and h) or game:GetService("CoreGui")
-
+do
+    local okH, h = pcall(function() return gethui() end)
+    screenGui.Parent = (okH and h) or game:GetService("CoreGui")
+end
 local function worldToScreen(pos)
     local vp, onScreen = Camera:WorldToViewportPoint(pos)
     return Vector2.new(vp.X, vp.Y), (onScreen and vp.Z > 0), vp.Z
@@ -482,10 +621,6 @@ end
 local function screenCenter()
     return Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 end
-local function screenBottom()
-    return Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-end
-
 local StatusL = Drawing.new("Text")
 StatusL.Outline = true; StatusL.Size = 18; setFont(StatusL, DF_PLEX); StatusL.Visible = false
 local StatusR = Drawing.new("Text")
@@ -494,13 +629,10 @@ local rageStatusText = ""
 local rageStatusOn = false
 local StatusLeftCol  = Color3.fromRGB(255, 255, 255)
 local StatusRightCol = Color3.fromRGB(120, 200, 255)
-
--- status text follow mode + smoothed anchor + cached muzzle
-local StatusFollow = "Off"        -- "Off" | "Follow Player" | "Follow Gun Tip"
-local statusPos    = nil          -- smoothed anchor for follow modes
+local StatusFollow = "Off"
+local statusPos    = nil
 local cachedMuzzle = nil
-local muzzleScanT  = 0            -- throttle so fists don't spam camera scans
-
+local muzzleScanT  = 0
 local HAS_BOUNDS = false
 pcall(function()
     local probe = Drawing.new("Text"); probe.Text = "test"
@@ -508,7 +640,6 @@ pcall(function()
     if tb and typeof(tb) == "Vector2" then HAS_BOUNDS = true end
     probe:Remove()
 end)
-
 local function textWidth(t, size)
     if HAS_BOUNDS then
         local okw, tb = pcall(function() return t.TextBounds end)
@@ -516,7 +647,6 @@ local function textWidth(t, size)
     end
     return (t.Text:len()) * size * 0.58
 end
-
 local function splitStatus(s)
     local mid = math.floor(#s / 2)
     local pivot = nil
@@ -527,12 +657,8 @@ local function splitStatus(s)
     if not pivot then pivot = mid end
     return s:sub(1, pivot), s:sub(pivot + 1)
 end
-
--- muzzle / barrel world position for "Follow Gun Tip".
 local function getGunTip()
-    if cachedMuzzle and cachedMuzzle.Parent then
-        return cachedMuzzle.WorldPosition
-    end
+    if cachedMuzzle and cachedMuzzle.Parent then return cachedMuzzle.WorldPosition end
     cachedMuzzle = nil
     local now = os.clock()
     if now - muzzleScanT < 0.25 then
@@ -570,17 +696,13 @@ local function getGunTip()
     local cf = Camera.CFrame
     return cf.Position + cf.LookVector * 4
 end
-
--- drawStatus takes dt and supports follow modes
 local function drawStatus(dt)
     if not rageStatusOn or rageStatusText == "" then
         StatusL.Visible = false; StatusR.Visible = false
         return
     end
-
     local vp = Camera.ViewportSize
     local anchor = nil
-
     if StatusFollow == "Follow Player" then
         local part = rageTargetPart
         if part and part.Parent then
@@ -600,16 +722,11 @@ local function drawStatus(dt)
         anchor = Vector2.new(vp.X / 2, vp.Y - 70)
         statusPos = nil
     end
-
     if StatusFollow ~= "Off" then
-        if not statusPos then
-            statusPos = anchor
-        else
-            statusPos = statusPos:Lerp(anchor, math.min(1, (dt or 0.016) * 10))
-        end
+        if not statusPos then statusPos = anchor
+        else statusPos = statusPos:Lerp(anchor, math.min(1, (dt or 0.016) * 10)) end
         anchor = statusPos
     end
-
     local left, right = splitStatus(rageStatusText)
     StatusL.Text = left; StatusR.Text = right
     StatusL.Color = StatusLeftCol; StatusR.Color = StatusRightCol
@@ -618,7 +735,6 @@ local function drawStatus(dt)
     StatusR.Position = Vector2.new(anchor.X, anchor.Y)
     StatusL.Visible = true; StatusR.Visible = true
 end
-
 local function mkSq(list)
     local s = Drawing.new("Square"); list[#list+1] = s
     pcall(function() s.ZIndex = 6 end)
@@ -629,8 +745,8 @@ local function mkTx(list)
     pcall(function() t.ZIndex = 6 end)
     return t
 end
-
 local TH = { all = {} }
+local AM = { all = {} }
 TH.bg     = mkSq(TH.all); TH.bg.Filled = true; TH.bg.Color = Color3.fromRGB(12,12,16); TH.bg.Visible = false
 TH.stroke = mkSq(TH.all); TH.stroke.Filled = false; TH.stroke.Thickness = 1; TH.stroke.Color = Color3.fromRGB(60,62,72); TH.stroke.Visible = false
 TH.accent = mkSq(TH.all); TH.accent.Filled = true; TH.accent.Visible = false
@@ -641,8 +757,6 @@ TH.hpFill = mkSq(TH.all); TH.hpFill.Filled = true; TH.hpFill.Visible = false
 TH.distT  = mkTx(TH.all); TH.distT.Size = 11; setFont(TH.distT, DF_MONO); TH.distT.Color = Color3.fromRGB(180,180,190); TH.distT.Visible = false
 TH.dot    = mkSq(TH.all); TH.dot.Filled = true; TH.dot.Size = Vector2.new(6,6); TH.dot.Visible = false
 TH.scan   = mkSq(TH.all); TH.scan.Filled = true; TH.scan.Visible = false
-
-local AM = { all = {} }
 AM.bg     = mkSq(AM.all); AM.bg.Filled = true; AM.bg.Color = Color3.fromRGB(12,12,16); AM.bg.Visible = false
 AM.stroke = mkSq(AM.all); AM.stroke.Filled = false; AM.stroke.Thickness = 1; AM.stroke.Color = Color3.fromRGB(60,62,72); AM.stroke.Visible = false
 AM.weapT  = mkTx(AM.all); AM.weapT.Size = 11; setFont(AM.weapT, DF_MONO); AM.weapT.Color = Color3.fromRGB(170,170,180); AM.weapT.Visible = false
@@ -652,29 +766,21 @@ AM.resT   = mkTx(AM.all); AM.resT.Size = 11; setFont(AM.resT, DF_MONO); AM.resT.
 AM.clipBg = mkSq(AM.all); AM.clipBg.Filled = true; AM.clipBg.Color = Color3.fromRGB(30,30,36); AM.clipBg.Visible = false
 AM.clipFill = mkSq(AM.all); AM.clipFill.Filled = true; AM.clipFill.Visible = false
 AM.statusT= mkTx(AM.all); AM.statusT.Size = 10; setFont(AM.statusT, DF_MONO); AM.statusT.Visible = false
-
 local TH_W, TH_H, TH_X, TH_Y = 200, 92, 12, 64
 local AM_W, AM_H = 150, 86
 local thDisp, amDisp = 0, 0
-
 local function hideTargetHud() for _, o in ipairs(TH.all) do o.Visible = false end end
 local function hideAmmo()      for _, o in ipairs(AM.all) do o.Visible = false end end
 
---[[================================================================
-    FOV RENDERER (gradient ring + split arcs + follow modes)
-================================================================]]
-
+--[[ FOV RENDERER ]]
 local function newFovRenderer()
-    local SEG = 40
-    local GRAD_SEG = 72
+    local SEG = 32
+    local GRAD_SEG = 48
     local INNER = 0.75
-
     local outline = Drawing.new("Circle")
     outline.Filled = false; outline.NumSides = 96; outline.Thickness = 1.5; outline.Visible = false
-
     local innerSolid = Drawing.new("Circle")
     innerSolid.Filled = false; innerSolid.NumSides = 96; innerSolid.Thickness = 1; innerSolid.Visible = false
-
     local innerL = {}; local innerR = {}
     for i = 1, SEG do
         local l = Drawing.new("Line"); l.Thickness = 1.5; l.Visible = false; innerL[i] = l
@@ -682,12 +788,10 @@ local function newFovRenderer()
     for i = 1, SEG do
         local l = Drawing.new("Line"); l.Thickness = 1.5; l.Visible = false; innerR[i] = l
     end
-
     local gradRing = {}
     for i = 1, GRAD_SEG do
         local l = Drawing.new("Line"); l.Thickness = 2; l.Visible = false; gradRing[i] = l
     end
-
     local self = {
         visible = false, spin = false, spinSpeed = 60,
         followMode = "Off", followLerp = 0.18, gradient = false,
@@ -696,14 +800,12 @@ local function newFovRenderer()
         cRight   = Color3.fromRGB(120, 0, 255),
         cur = nil, angle = 0, radius = 100, _lastT = nil,
     }
-
     local function hideAll()
         outline.Visible = false
         innerSolid.Visible = false
         for i = 1, SEG do innerL[i].Visible = false; innerR[i].Visible = false end
         for i = 1, GRAD_SEG do gradRing[i].Visible = false end
     end
-
     local function drawHalf(arr, startA, col, c, r)
         for i = 1, SEG do
             local a0 = startA + ((i - 1) / SEG) * math.pi
@@ -713,45 +815,32 @@ local function newFovRenderer()
             local l = arr[i]; l.From = p0; l.To = p1; l.Color = col; l.Visible = true
         end
     end
-
     function self.setVisible(v)
         self.visible = v
         if not v then hideAll() end
     end
-
     function self.update(defaultCenter, targetPos, tipPos, radius)
         self.radius = radius
         if not self.visible then hideAll(); return end
-
         local now = os.clock()
         local dt = self._lastT and (now - self._lastT) or 0.016
         if dt > 0.1 then dt = 0.1 end
         self._lastT = now
-
         local goal = defaultCenter
-        if self.followMode == "Follow Player" and targetPos then
-            goal = targetPos
-        elseif self.followMode == "Follow Gun Tip" and tipPos then
-            goal = tipPos
-        end
+        if self.followMode == "Follow Player" and targetPos then goal = targetPos
+        elseif self.followMode == "Follow Gun Tip" and tipPos then goal = tipPos end
         if not self.cur then self.cur = goal end
         self.cur = self.cur:Lerp(goal, self.followLerp)
-
         if self.spin then self.angle = self.angle + math.rad(self.spinSpeed) * dt end
-
         local c = self.cur
-
         if self.gradient then
             for i = 1, GRAD_SEG do
                 local a0 = self.angle + ((i - 1) / GRAD_SEG) * (math.pi * 2)
                 local a1 = self.angle + (i / GRAD_SEG) * (math.pi * 2)
                 local t = (i - 1) / GRAD_SEG
                 local col
-                if t < 0.5 then
-                    col = self.cLeft:Lerp(self.cRight, t * 2)
-                else
-                    col = self.cRight:Lerp(self.cLeft, (t - 0.5) * 2)
-                end
+                if t < 0.5 then col = self.cLeft:Lerp(self.cRight, t * 2)
+                else col = self.cRight:Lerp(self.cLeft, (t - 0.5) * 2) end
                 local p0 = c + Vector2.new(math.cos(a0), math.sin(a0)) * radius
                 local p1 = c + Vector2.new(math.cos(a1), math.sin(a1)) * radius
                 local l = gradRing[i]; l.From = p0; l.To = p1; l.Color = col; l.Visible = true
@@ -774,25 +863,19 @@ local function newFovRenderer()
             outline.Visible = true
         end
     end
-
     function self.destroy()
         pcall(function() outline:Remove() end)
         pcall(function() innerSolid:Remove() end)
         for i = 1, SEG do pcall(function() innerL[i]:Remove() end); pcall(function() innerR[i]:Remove() end) end
         for i = 1, GRAD_SEG do pcall(function() gradRing[i]:Remove() end) end
     end
-
     return self
 end
-
 local aimFov    = newFovRenderer()
 local silentFov = newFovRenderer()
 silentFov.cLeft = Color3.fromRGB(255, 80, 80); silentFov.cRight = Color3.fromRGB(80, 120, 255)
 
---[[================================================================
-    SNOW BLIZZARD
-================================================================]]
-
+--[[ SNOW BLIZZARD ]]
 local function toggleSnow(enable)
     if not enable then
         if getgenv().ArouraSnow then
@@ -801,24 +884,18 @@ local function toggleSnow(enable)
         end
         return
     end
-
     if getgenv().ArouraSnow then getgenv().ArouraSnow:Destroy() end
-
     local SNOW_INTENSITY = 10000
     local SNOW_FALL_SPEED = 120
     local SNOW_SIZE_NEAR = 3
     local SNOW_SIZE_FAR = 1.5
     local SNOW_AREA = 250
-
     local host = Instance.new("Part")
     host.Name = "ArouraSnowHost"
-    host.Anchored = true
-    host.CanCollide = false
-    host.Transparency = 1
+    host.Anchored = true; host.CanCollide = false; host.Transparency = 1
     host.Size = Vector3.new(SNOW_AREA, 1, SNOW_AREA)
     host.Parent = workspace
     getgenv().ArouraSnow = host
-
     local function createEmitter(name, size, rate)
         local emitter = Instance.new("ParticleEmitter")
         emitter.Name = name
@@ -834,22 +911,18 @@ local function toggleSnow(enable)
         emitter.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
         emitter.ShapePartial = Vector3.new(1, 0, 1)
         emitter.Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 1),
-            NumberSequenceKeypoint.new(0.05, 0),
-            NumberSequenceKeypoint.new(0.95, 0),
-            NumberSequenceKeypoint.new(1, 1),
+            NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.05, 0),
+            NumberSequenceKeypoint.new(0.95, 0), NumberSequenceKeypoint.new(1, 1),
         })
         pcall(function() emitter.CollisionMode = Enum.ParticleCollisionMode.Everything end)
         emitter.Parent = host
         return emitter
     end
-
     local nearSnow = createEmitter("NearSnow", SNOW_SIZE_NEAR, SNOW_INTENSITY * 0.3)
     nearSnow.ZOffset = 2
     local farSnow = createEmitter("FarSnow", SNOW_SIZE_FAR, SNOW_INTENSITY * 0.7)
     farSnow.ZOffset = -2
 end
-
 pcall(function()
     RunService.Heartbeat:Connect(function()
         if SnowEnabled and getgenv().ArouraSnow and getgenv().ArouraSnow.Parent then
@@ -859,32 +932,26 @@ pcall(function()
     end)
 end)
 
---[[================================================================
-    UI LIBRARY + FONT OVERRIDE (RobotoMono)
-================================================================]]
-
-local repo = "https://raw.githubusercontent.com/mstudio45/LinoriaLib/main/"
-
-local Library      = loadstring(game:HttpGet(repo .. "Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-local SaveManager  = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
-
+--[[ UI LIBRARY ]]
+local Library, ThemeManager, SaveManager
+do
+    local repo = "https://raw.githubusercontent.com/mstudio45/LinoriaLib/main/"
+    Library      = loadstring(game:HttpGet(repo .. "Library.lua"))()
+    ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+    SaveManager  = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+end
 pcall(function() Library.Font = Enum.Font.RobotoMono end)
 pcall(function() Library:SetFont(Enum.Font.RobotoMono) end)
-
 local Options = Library.Options
 local Toggles = Library.Toggles
-
 Library:SetWatermarkVisibility(true)
 Library:SetWatermark(TITLE)
-
 local Window = Library:CreateWindow({
     Title = TITLE,
     Center = true, AutoShow = true, Resizable = true,
     ShowCustomCursor = true, UnlockMouseWhileOpen = true, NotifySide = "Left",
     TabPadding = 8, MenuFadeTime = 0.2,
 })
-
 local libGuiCache = nil
 local function findLibGui()
     if libGuiCache and libGuiCache.Parent then return libGuiCache end
@@ -911,7 +978,6 @@ local function findLibGui()
     end
     return nil
 end
-
 local function applyLibFont()
     local gui = findLibGui()
     if not gui then return end
@@ -923,7 +989,6 @@ local function applyLibFont()
         end
     end)
 end
-
 pcall(function()
     local _origNotify = Library.Notify
     if _origNotify then
@@ -934,15 +999,14 @@ pcall(function()
         end
     end
 end)
-
 local Tabs = {
     Main     = Window:AddTab("Main"),
     ESP      = Window:AddTab("ESP"),
     World    = Window:AddTab("World"),
     Rage     = Window:AddTab("Rage"),
+    Extra    = Window:AddTab("Extra"),
     Settings = Window:AddTab("Settings"),
 }
-
 local function tab(name, f)
     local o2, e2 = pcall(f)
     if not o2 then
@@ -951,21 +1015,15 @@ local function tab(name, f)
     end
 end
 
---[[================================================================
-    FEATURE STATE + FUNCTIONS
-================================================================]]
-
+--[[ FEATURE STATE + FUNCTIONS ]]
 local fcCache = nil
 local function getFC()
     if fcCache then return fcCache end
     pcall(function() fcCache = require(LocalPlayer.PlayerScripts.Controllers.FighterController) end)
     return fcCache
 end
-
--- AIM ASSIST (pull gated by isAiming() = the ADS input for your platform)
 local AimEnabled, AimConn = false, nil
 local AimFOV, AimSmooth, AimPart, AimShow = 120, 0.35, "Head", true
-
 local function closestAimTarget()
     local center = screenCenter(); local best, bestD = nil, AimFOV
     for _, plr in ipairs(Players:GetPlayers()) do
@@ -980,7 +1038,6 @@ local function closestAimTarget()
     end
     return best
 end
-
 local function startAim()
     if AimConn then AimConn:Disconnect() end
     AimConn = RunService.RenderStepped:Connect(function()
@@ -1006,7 +1063,6 @@ local function startAim()
             end
         end
         aimFov.update(screenCenter(), targetPos, tipPos, AimFOV)
-
         if RageEnabled then return end
         if not isAiming() then return end
         if not target or not target.Character then return end
@@ -1014,25 +1070,19 @@ local function startAim()
         Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, part.Position), AimSmooth)
     end)
 end
-
 local function stopAim()
     if AimConn then AimConn:Disconnect(); AimConn = nil end
     aimFov.setVisible(false)
 end
-
--- SILENT AIM + SHARED RAYCAST HOOK (rage wins; silent UNGATED = auto-shoot)
 local SilentEnabled = false
 getgenv().Config = { HitPart = "Head", FOVRadius = 300, ShowFOV = true }
-
 local UtilityModule, OriginalRaycast = nil, nil
 pcall(function()
     UtilityModule = require(ReplicatedStorage.Modules.Utility)
     OriginalRaycast = UtilityModule.Raycast
 end)
-
 local SilentConn = nil
 local RayHooked = false
-
 local function silentTarget()
     local center = screenCenter(); local best, bestD = nil, getgenv().Config.FOVRadius
     for _, ent in ipairs(CollectionService:GetTagged("Entity")) do
@@ -1045,11 +1095,9 @@ local function silentTarget()
     end
     return best
 end
-
 local function rageHitPartName()
     return (getgenv().Config and getgenv().Config.HitPart) or "Head"
 end
-
 local function ensureRaycastHook()
     if RayHooked then return true end
     if not UtilityModule or not OriginalRaycast then
@@ -1059,7 +1107,6 @@ local function ensureRaycastHook()
         end)
     end
     if not UtilityModule or not OriginalRaycast then return false end
-
     UtilityModule.Raycast = function(self, origin, dir, maxDist, ...)
         if RageEnabled and rageTargetPart and rageTargetPart.Parent then
             local tp = rageTargetPart.Position
@@ -1081,13 +1128,10 @@ local function ensureRaycastHook()
         end
         return OriginalRaycast(self, origin, dir, maxDist, ...)
     end
-
     RayHooked = true
     return true
 end
-
 pcall(function() ensureRaycastHook() end)
-
 local function enableSilent()
     if not ensureRaycastHook() then
         Library:Notify("Silent aim: Utility.Raycast not found", 3); return
@@ -1115,15 +1159,11 @@ local function enableSilent()
         silentFov.update(screenCenter(), targetPos, tipPos, getgenv().Config.FOVRadius)
     end)
 end
-
 local function disableSilent()
     if SilentConn then SilentConn:Disconnect(); SilentConn = nil end
     silentFov.setVisible(false)
 end
-
--- RAPID FIRE  (GunModule/GunOrigUpdate/GunHooked are top-level; shared w/ rage)
 local RapidEnabled = false
-
 local function installRapidHook()
     if GunHooked then return true end
     local ok2 = pcall(function()
@@ -1137,8 +1177,6 @@ local function installRapidHook()
     end
     GunHooked = true; return true
 end
-
--- HIT NOTIFICATIONS + TEMPLATE
 local HIT_SOUNDS = {
     agpa  = "132463144859699",
     cs2   = "137392628136734",
@@ -1147,7 +1185,6 @@ local HIT_SOUNDS = {
 local HitNotifyEnabled = true
 local HitSoundId       = HIT_SOUNDS.agpa
 local HitTemplate      = "{plr} / {dmg} / {part}"
-
 local function formatHit(name, dmg, part)
     local s = HitTemplate or ""
     s = s:gsub("{plr}",  function() return name end)
@@ -1155,7 +1192,6 @@ local function formatHit(name, dmg, part)
     s = s:gsub("{part}", function() return part end)
     return s
 end
-
 local function playHitSound()
     pcall(function()
         local s = Instance.new("Sound")
@@ -1164,17 +1200,14 @@ local function playHitSound()
         task.delay(3, function() pcall(function() s:Destroy() end) end)
     end)
 end
-
 local function currentHitPart()
     if SilentEnabled then return getgenv().Config.HitPart end
     if AimEnabled then return AimPart end
     return "Head"
 end
-
 local lastHealth = {}
 local lastNotify = {}
 local HitMonitorConn = nil
-
 local function startHitMonitor()
     if HitMonitorConn then return end
     HitMonitorConn = RunService.Heartbeat:Connect(function()
@@ -1206,8 +1239,6 @@ local function startHitMonitor()
     end)
 end
 startHitMonitor()
-
--- AUTO LOADOUT
 local LOADOUT_ORDER = {"Off", "Default", "HG First", "Fists First", "Grenade Lead"}
 local LOADOUTS = {
     ["Off"]           = nil,
@@ -1218,7 +1249,6 @@ local LOADOUTS = {
 }
 local AutoLoadoutEnabled = false
 local CurrentLoadout     = nil
-
 local wlRem, preRem
 local function fetchLoadoutRemotes()
     if wlRem then return true end
@@ -1228,7 +1258,6 @@ local function fetchLoadoutRemotes()
     end)
     return s and wlRem ~= nil
 end
-
 task.spawn(function()
     while task.wait(0.1) do
         if not AutoLoadoutEnabled or not CurrentLoadout then continue end
@@ -1248,8 +1277,6 @@ task.spawn(function()
         end
     end
 end)
-
--- AMMO READER
 local function getActiveItem()
     local fc = getFC(); if not fc then return nil end
     local okf, f = pcall(function() return fc:GetFighter(LocalPlayer) end)
@@ -1262,11 +1289,9 @@ local function getActiveItem()
     if not it then pcall(function() if f.Items then for _, x in pairs(f.Items) do it = x; break end end end) end
     return it
 end
-
 local CUR_CANDS = {{"GetAmmo","meth"},{"Ammo","get"},{"Ammo","field"},{"CurrentAmmo","field"},{"Clip","field"}}
 local RES_CANDS = {{"GetReserveAmmo","meth"},{"ReserveAmmo","get"},{"Reserve","get"},{"ReserveAmmo","field"},{"Reserve","field"},{"BackupAmmo","field"}}
 local MAX_CANDS = {{"GetMaxAmmo","meth"},{"GetClipSize","meth"},{"MaxAmmo","get"},{"ClipSize","get"},{"MaxAmmo","field"},{"ClipSize","field"}}
-
 local function tryRead(item, desc)
     if desc.kind == "meth" then
         local okv, v = pcall(function() return item[desc.name](item) end)
@@ -1280,7 +1305,6 @@ local function tryRead(item, desc)
     end
     return nil
 end
-
 local function probe(item, cands)
     for _, c in ipairs(cands) do
         local v = tryRead(item, {name = c[1], kind = c[2]})
@@ -1288,12 +1312,10 @@ local function probe(item, cands)
     end
     return nil
 end
-
 local ammoProbeCache = {}
 pcall(function()
     LocalPlayer.CharacterAdded:Connect(function() ammoProbeCache = {} end)
 end)
-
 local function readAmmo(item)
     if not item then return nil end
     local tn = (item.Name or "?") .. "|" .. (typeof(item) == "Instance" and item.ClassName or "t")
@@ -1312,12 +1334,9 @@ local function readAmmo(item)
     if cur == nil and res == nil then return nil end
     return cur or 0, res or 0, maxv
 end
-
--- ESP WEAPON READER — LIVE
 local function readWeapon(plr)
     local char = plr.Character
     local tool = char and char:FindFirstChildOfClass("Tool") or nil
-
     local item = nil
     local fc = getFC()
     if fc then
@@ -1329,7 +1348,6 @@ local function readWeapon(plr)
             if not item then pcall(function() item = f.EquippedItem end) end
         end
     end
-
     local name = ""
     if item then
         pcall(function() if type(item.Name) == "string" and item.Name ~= "" then name = item.Name end end)
@@ -1340,16 +1358,12 @@ local function readWeapon(plr)
     end
     return name, tool, item
 end
-
--- UNLOCK ALL (cosmetics)
 local function enableUnlockAll()
     UnlockActive = true
     if UnlockInstalled then return end
     UnlockInstalled = true
-
     task.spawn(function()
         task.wait(4)
-
         local _rs = ReplicatedStorage
         local _ps = LocalPlayer.PlayerScripts
         local _ctrl = _ps:WaitForChild("Controllers", 10)
@@ -1357,19 +1371,15 @@ local function enableUnlockAll()
         if not _mods or not _ctrl then
             Library:Notify("Unlock: Modules/Controllers not found", 3); return
         end
-
         local enumLib
         pcall(function()
             enumLib = require(_mods:WaitForChild("EnumLibrary", 10))
             if enumLib and enumLib.WaitForEnumBuilder then enumLib:WaitForEnumBuilder() end
         end)
-
         local cosLib = require(_mods:WaitForChild("CosmeticLibrary", 10))
         local datCtrl = require(_ctrl:WaitForChild("PlayerDataController", 10))
         UNLOCK.cosLib = cosLib; UNLOCK.datCtrl = datCtrl
-
         local eq, favs = {}, {}
-
         local function mkCos(nm, ctype, opts)
             local base = cosLib.Cosmetics[nm]; if not base then return nil end
             local d = {}; for k, v in pairs(base) do d[k] = v end
@@ -1384,7 +1394,6 @@ local function enableUnlockAll()
             end
             return d
         end
-
         local cfgFile = "rivals_unlocker_config.json"
         local saveLock = false
         local cosTypes = {"Skin","Wrap","Charm","Dance","Emote"}
@@ -1393,7 +1402,6 @@ local function enableUnlockAll()
             for _, t in ipairs(cosTypes) do if c.Type == t then return true end end
             return false
         end
-
         local function strip()
             local out = {}
             for wn, cos in pairs(eq) do
@@ -1406,7 +1414,6 @@ local function enableUnlockAll()
             end
             return { equipped = out, favorites = favs }
         end
-
         local function loadCfg()
             if not isfile or not readfile then return end
             local e1, ex = pcall(isfile, cfgFile); if not e1 or not ex then return end
@@ -1427,7 +1434,6 @@ local function enableUnlockAll()
                 end
             end
         end
-
         local function saveCfg()
             if not writefile or saveLock then return end
             saveLock = true
@@ -1438,9 +1444,7 @@ local function enableUnlockAll()
                 saveLock = false
             end)
         end
-
         loadCfg()
-
         cosLib.OwnsCosmeticNormally = function(_, inv, nm)
             if not UnlockActive then return false end
             local c = cosLib.Cosmetics[nm]; return c and c.Type == "Skin" or false
@@ -1453,7 +1457,6 @@ local function enableUnlockAll()
             if not UnlockActive then return false end
             local c = cosLib.Cosmetics[nm]; return c and c.Type == "Skin" or false
         end
-
         local origOwns = cosLib.OwnsCosmetic
         cosLib.OwnsCosmetic = function(self, inv, nm, wep)
             if not UnlockActive then return origOwns(self, inv, nm, wep) end
@@ -1462,7 +1465,6 @@ local function enableUnlockAll()
             if c and isCos(c) then return true end
             return origOwns(self, inv, nm, wep)
         end
-
         local origGet = datCtrl.Get
         datCtrl.Get = function(self, key)
             local val = origGet(self, key)
@@ -1492,7 +1494,6 @@ local function enableUnlockAll()
             end
             return val
         end
-
         local origGetWep = datCtrl.GetWeaponData
         datCtrl.GetWeaponData = function(self, wn)
             local d = origGetWep(self, wn); if not d then return nil end
@@ -1501,11 +1502,9 @@ local function enableUnlockAll()
             if eq[wn] then for ct, cd in pairs(eq[wn]) do m[ct] = cd end end
             return m
         end
-
         local fightCtrl
         pcall(function() fightCtrl = require(_ctrl:WaitForChild("FighterController", 10)) end)
         UNLOCK.fightCtrl = fightCtrl
-
         local remotes = _rs:FindFirstChild("Remotes")
         local dataRem = remotes and remotes:FindFirstChild("Data")
         local equipRem = dataRem and dataRem:FindFirstChild("EquipCosmetic")
@@ -1514,7 +1513,6 @@ local function enableUnlockAll()
         local fightRem = repRem and repRem:FindFirstChild("Fighter")
         local useItmRem = fightRem and fightRem:FindFirstChild("UseItem")
         UNLOCK.equipRem = equipRem; UNLOCK.favRem = favRem; UNLOCK.useItemRemote = useItmRem
-
         UNLOCK._handleEquip = function(wn, ct, cn, opts)
             if cn and cn ~= "None" and cn ~= "" then
                 local inv = datCtrl:Get("CosmeticInventory")
@@ -1530,7 +1528,6 @@ local function enableUnlockAll()
             task.defer(function() pcall(function() datCtrl.CurrentData:Replicate("WeaponInventory") end) end)
             saveCfg()
         end
-
         UNLOCK._handle_fav = function(wep, cosName, isFav)
             local cos = cosLib.Cosmetics[cosName]
             if cos then
@@ -1539,10 +1536,8 @@ local function enableUnlockAll()
                 saveCfg()
             end
         end
-
         local cliItem
         pcall(function() cliItem = require(LocalPlayer.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem) end)
-
         local buildingWep = nil
         if cliItem and cliItem._CreateViewModel then
             local origCVM = cliItem._CreateViewModel
@@ -1565,7 +1560,6 @@ local function enableUnlockAll()
                 local r = origCVM(self, vmRef); buildingWep = nil; return r
             end
         end
-
         local vmMod = cliItem and cliItem:FindFirstChild("ClientViewModel")
         if vmMod then
             local CVM = require(vmMod); local origNew = CVM.new
@@ -1582,29 +1576,24 @@ local function enableUnlockAll()
                 return origNew(repData, cliItm)
             end
         end
-
         Library:Notify("Unlock All installed", 3)
     end)
 end
 
--- ESP (per-element color + per-text font + LIVE weapons)
+--[[ ESP ]]
 local ESP = {
     Enabled = false, Boxes = true, Health = true, Names = true,
-    Distance = true, Tracers = false, Skeleton = false, TeamCheck = false,
+    Distance = true, Skeleton = false, TeamCheck = false,
     Weapons = false,
     MaxDist = 10000000, Thick = 1, TextSize = 13,
     BoxColor   = Color3.fromRGB(255,255,255),
     NameColor  = Color3.fromRGB(255,255,255),
     DistColor  = Color3.fromRGB(255,255,255),
-    TracerColor= Color3.fromRGB(255,0,0),
     SkelColor  = Color3.fromRGB(255,255,255),
     WeapColor  = Color3.fromRGB(255,200,80),
     HiHP = Color3.fromRGB(0,255,0), LoHP = Color3.fromRGB(255,0,0),
-    NameFont = nil,
-    DistFont = nil,
-    WeapFont = nil,
+    NameFont = nil, DistFont = nil, WeapFont = nil,
 }
-
 local function setEspFont(which, str)
     local idx = parseDrawFont(str)
     if str and str ~= "" and idx == nil then
@@ -1614,25 +1603,21 @@ local function setEspFont(which, str)
     elseif which == "dist" then ESP.DistFont = idx
     elseif which == "weap" then ESP.WeapFont = idx end
 end
-
 local SKELETON = {
     {"Head","UpperTorso"}, {"UpperTorso","LeftUpperArm"}, {"LeftUpperArm","LeftLowerArm"},
     {"UpperTorso","RightUpperArm"}, {"RightUpperArm","RightLowerArm"},
     {"UpperTorso","LeftUpperLeg"}, {"LeftUpperLeg","LeftLowerLeg"},
     {"UpperTorso","RightUpperLeg"}, {"RightUpperLeg","RightLowerLeg"},
 }
-
 local ESPObjs = {}
 local ESPConn = nil
-
 local function hpColor(r) return ESP.LoHP:Lerp(ESP.HiHP, r) end
-
 local function makeESP(plr)
     if plr == LocalPlayer or ESPObjs[plr] then return end
     local e = {
         Box = Drawing.new("Square"), HpBG = Drawing.new("Square"), Hp = Drawing.new("Square"),
         Name = Drawing.new("Text"), Dist = Drawing.new("Text"), Weap = Drawing.new("Text"),
-        Trace = Drawing.new("Line"), Bones = {},
+        Bones = {},
         lastTool = nil, lastItem = nil, weapText = "",
     }
     e.Box.Filled = false
@@ -1644,26 +1629,22 @@ local function makeESP(plr)
     for _ = 1, #SKELETON do local l = Drawing.new("Line"); l.Thickness = 1; e.Bones[#e.Bones+1] = l end
     ESPObjs[plr] = e
 end
-
 local function killESP(plr)
     local e = ESPObjs[plr]; if not e then return end
-    e.Box:Remove(); e.HpBG:Remove(); e.Hp:Remove(); e.Name:Remove(); e.Dist:Remove(); e.Weap:Remove(); e.Trace:Remove()
+    e.Box:Remove(); e.HpBG:Remove(); e.Hp:Remove(); e.Name:Remove(); e.Dist:Remove(); e.Weap:Remove()
     for _, l in ipairs(e.Bones) do l:Remove() end
     ESPObjs[plr] = nil
 end
-
 local function hideESP(e)
     e.Box.Visible = false; e.HpBG.Visible = false; e.Hp.Visible = false
-    e.Name.Visible = false; e.Dist.Visible = false; e.Weap.Visible = false; e.Trace.Visible = false
+    e.Name.Visible = false; e.Dist.Visible = false; e.Weap.Visible = false
     for _, l in ipairs(e.Bones) do l.Visible = false end
 end
-
 local function startESP()
     if ESPConn then ESPConn:Disconnect() end
     for _, p in ipairs(Players:GetPlayers()) do makeESP(p) end
     ESPConn = RunService.RenderStepped:Connect(function()
         Camera = workspace.CurrentCamera
-        local bottom = screenBottom()
         for plr, e in pairs(ESPObjs) do
             local show = false
             if ESP.Enabled and plr.Character then
@@ -1689,13 +1670,11 @@ local function startESP()
                             e.Name.Position = Vector2.new(hs.X, by-16); e.Name.Size = ESP.TextSize
                             e.Name.Color = ESP.NameColor; e.Name.Visible = ESP.Names
                             setFont(e.Name, ESP.NameFont or DF_UI)
-
                             local distY = by + bh + 2
                             e.Dist.Text = string.format("[%dm]", math.floor(d))
                             e.Dist.Position = Vector2.new(hs.X, distY); e.Dist.Size = ESP.TextSize-1
                             e.Dist.Color = ESP.DistColor; e.Dist.Visible = ESP.Distance
                             setFont(e.Dist, ESP.DistFont or DF_UI)
-
                             if ESP.Weapons then
                                 local nm, tl, it = readWeapon(plr)
                                 if tl ~= e.lastTool or it ~= e.lastItem or (nm or "") ~= e.weapText then
@@ -1713,9 +1692,6 @@ local function startESP()
                             else
                                 e.Weap.Visible = false
                             end
-
-                            e.Trace.From = bottom; e.Trace.To = Vector2.new(hs.X, by+bh)
-                            e.Trace.Color = ESP.TracerColor; e.Trace.Visible = ESP.Tracers
                             if ESP.Skeleton then
                                 for i, pair in ipairs(SKELETON) do
                                     local p1 = plr.Character:FindFirstChild(pair[1], true)
@@ -1740,33 +1716,25 @@ local function startESP()
         end
     end)
 end
-
 local function stopESP()
     if ESPConn then ESPConn:Disconnect(); ESPConn = nil end
     for p in pairs(ESPObjs) do killESP(p) end
 end
-
 Players.PlayerAdded:Connect(function(p) if ESP.Enabled then makeESP(p) end end)
 Players.PlayerRemoving:Connect(killESP)
 
---[[================================================================
-    RAGEBOT — AUTO-FIRE (magic-bullet style, NO hitbox freeze)
-================================================================]]
-
+--[[ RAGEBOT ]]
 local lastStatus = ""
 local clientCamPos = Vector3.zero
 local RAGE_STEP = "VEIL_RAGE_STEP"
 local RAGE_RESTORE = "VEIL_RAGE_RESTORE"
 local rageHB = nil
-
 local function setStatus(t)
     if t == lastStatus then return end
     lastStatus = t
     rageStatusText = t
     rageStatusOn = RageEnabled and t ~= "" and t ~= "(off)"
 end
-
--- team-aware nearest enemy
 local function sameTeam(p)
     local ok1, myT = pcall(function() return LocalPlayer:GetAttribute("TeamID") end)
     local ok2, pT  = pcall(function() return p:GetAttribute("TeamID") end)
@@ -1774,7 +1742,6 @@ local function sameTeam(p)
     if LocalPlayer.Team ~= nil and p.Team == LocalPlayer.Team then return true end
     return false
 end
-
 local function nearestEnemy()
     local best, bestR, bestD = nil, nil, math.huge
     for _, p in ipairs(Players:GetPlayers()) do
@@ -1788,8 +1755,6 @@ local function nearestEnemy()
     end
     return best, bestR
 end
-
--- auto-fire: wrap Gun.Update so the engine fires StartShooting for us.
 local function installAutoFireHook()
     if AutoFireHooked then return true end
     local ok2 = pcall(function()
@@ -1827,14 +1792,11 @@ local function installAutoFireHook()
     AutoFireHooked = true
     return true
 end
-
 local function startRage()
     RageEnabled = true
     setStatus("(Rage) scanning")
     clientCamPos = Camera.CFrame.Position
     pcall(function() ensureRaycastHook() end)
-
-    -- bring up the magic-bullet hit path (guarded so a manual toggle is safe)
     rageAutoDesync = false
     if DesyncMod and not desyncActive then
         rageAutoDesync = true
@@ -1842,12 +1804,9 @@ local function startRage()
         pcall(function() DesyncMod:__init() end)
         pcall(function() if Toggles.DesyncToggle then Toggles.DesyncToggle:SetValue(true) end end)
     end
-
     if not installAutoFireHook() then
         Library:Notify("Rage auto-fire: Gun module not ready (respawn & retry)", 3)
     end
-
-    -- calm camera: hides the desync's 1-tick root teleport from your view
     pcall(function() RunService:UnbindFromRenderStep(RAGE_STEP) end)
     RunService:BindToRenderStep(RAGE_STEP, Enum.RenderPriority.Camera.Value + 100, function(dt)
         Camera = workspace.CurrentCamera
@@ -1865,8 +1824,6 @@ local function startRage()
         end
         Camera.CFrame = CFrame.new(clientCamPos) * curLook
     end)
-
-    -- lock + status + (fallback auto-fire if the Update hook couldn't install)
     if rageHB then rageHB:Disconnect() end
     rageHB = RunService.Heartbeat:Connect(function(dt)
         if not RageEnabled then return end
@@ -1894,7 +1851,6 @@ local function startRage()
         end
     end)
 end
-
 local function stopRage()
     RageEnabled = false
     rageTargetPart = nil
@@ -1910,10 +1866,7 @@ local function stopRage()
     setStatus("(off)")
 end
 
---[[================================================================
-    TARGET HUD + AMMO HUD + STATUS UPDATE
-================================================================]]
-
+--[[ TARGET HUD + AMMO HUD + STATUS ]]
 local function lockPlayer()
     if RageEnabled then
         if rageTargetPart and rageTargetPart.Parent then
@@ -1940,42 +1893,34 @@ local function lockPlayer()
     end
     return best
 end
-
 local function updateTargetHud(dt, clock)
     local plr = lockPlayer()
     TH.bg.Position = Vector2.new(TH_X, TH_Y); TH.bg.Size = Vector2.new(TH_W, TH_H); TH.bg.Visible = true
     TH.stroke.Position = Vector2.new(TH_X, TH_Y); TH.stroke.Size = Vector2.new(TH_W, TH_H); TH.stroke.Visible = true
     TH.accent.Position = Vector2.new(TH_X, TH_Y); TH.accent.Size = Vector2.new(4, TH_H); TH.accent.Visible = true
-
     local hum = plr and plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
     local root = plr and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
-
     if plr and hum and root and hum.Health > 0 then
         local ratio = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
         thDisp = thDisp + (ratio - thDisp) * math.min(1, dt * 10)
         local col = ESP.LoHP:Lerp(ESP.HiHP, thDisp)
         TH.accent.Color = col
         TH.stroke.Color = Color3.fromRGB(60, 62, 72)
-
         local dn = plr.DisplayName or plr.Name
         if #dn > 14 then dn = dn:sub(1, 13) .. "…" end
         TH.nameT.Text = dn; TH.nameT.Color = Color3.fromRGB(245,245,250)
         TH.nameT.Position = Vector2.new(TH_X + 12, TH_Y + 8); TH.nameT.Visible = true
-
         local crit = ratio < 0.3
         TH.statusT.Text = crit and "CRITICAL" or "LOCKED"
         local pulse = crit and (0.5 + 0.5 * math.sin(clock * 8)) or 1
         TH.statusT.Color = crit and Color3.fromRGB(255, 80 + 120 * pulse, 80) or Color3.fromRGB(120, 255, 160)
         TH.statusT.Position = Vector2.new(TH_X + TH_W - 78, TH_Y + 9); TH.statusT.Visible = true
-
         TH.hpBg.Position = Vector2.new(TH_X + 12, TH_Y + 30); TH.hpBg.Size = Vector2.new(TH_W - 24, 8); TH.hpBg.Visible = true
         TH.hpFill.Position = Vector2.new(TH_X + 12, TH_Y + 30); TH.hpFill.Size = Vector2.new((TH_W - 24) * thDisp, 8)
         TH.hpFill.Color = col; TH.hpFill.Visible = true
-
         local d = (root.Position - Camera.CFrame.Position).Magnitude
         TH.distT.Text = string.format("%d m   %d hp", math.floor(d), math.floor(hum.Health))
         TH.distT.Position = Vector2.new(TH_X + 12, TH_Y + 44); TH.distT.Visible = true
-
         TH.dot.Position = Vector2.new(TH_X + TH_W - 12, TH_Y + 10); TH.dot.Color = col; TH.dot.Visible = true
         TH.scan.Visible = false
     else
@@ -1993,30 +1938,24 @@ local function updateTargetHud(dt, clock)
         TH.scan.Size = Vector2.new(24, 2); TH.scan.Color = Color3.fromRGB(120, 180, 255); TH.scan.Visible = true
     end
 end
-
 local function updateAmmo(dt, clock)
     local vp = Camera.ViewportSize
     local ax = vp.X - AM_W - 12; local ay = 70
     local item = getActiveItem()
     local cur, res, maxv = readAmmo(item)
-
     AM.bg.Position = Vector2.new(ax, ay); AM.bg.Size = Vector2.new(AM_W, AM_H); AM.bg.Visible = true
     AM.stroke.Position = Vector2.new(ax, ay); AM.stroke.Size = Vector2.new(AM_W, AM_H); AM.stroke.Visible = true
-
     local weapName = item and (item.Name or "Weapon") or "No Weapon"
     AM.weapT.Text = weapName:upper(); AM.weapT.Position = Vector2.new(ax + 10, ay + 8); AM.weapT.Visible = true
-
     if cur ~= nil then
         local ratio = (maxv and maxv > 0) and math.clamp(cur / maxv, 0, 1) or (cur > 0 and 1 or 0)
         amDisp = amDisp + (ratio - amDisp) * math.min(1, dt * 12)
         local low = (maxv and maxv > 0) and (cur / maxv) <= 0.25 or false
         local empty = (cur <= 0)
         local cc = empty and Color3.fromRGB(255,90,90) or (low and Color3.fromRGB(255,180,80) or Color3.fromRGB(120,200,255))
-
         AM.bigT.Text = tostring(math.floor(cur))
         AM.bigT.Color = empty and Color3.fromRGB(255,90,90) or (low and Color3.fromRGB(255,180,80) or Color3.fromRGB(245,245,250))
         AM.bigT.Position = Vector2.new(ax + 10, ay + 22); AM.bigT.Visible = true
-
         local bigW = textWidth(AM.bigT, 26)
         if maxv and maxv > 0 then
             AM.fullT.Text = "/ " .. tostring(math.floor(maxv))
@@ -2026,17 +1965,13 @@ local function updateAmmo(dt, clock)
         else
             AM.fullT.Visible = false
         end
-
         AM.resT.Text = "+ " .. tostring(math.floor(res)) .. " reserve"
         AM.resT.Position = Vector2.new(ax + 10, ay + 54); AM.resT.Visible = true
-
         AM.clipBg.Position = Vector2.new(ax + 10, ay + AM_H - 12); AM.clipBg.Size = Vector2.new(AM_W - 20, 5); AM.clipBg.Visible = true
         AM.clipFill.Position = Vector2.new(ax + 10, ay + AM_H - 12); AM.clipFill.Size = Vector2.new((AM_W - 20) * amDisp, 5)
         AM.clipFill.Color = cc; AM.clipFill.Visible = true
-
         local pulse = (low or empty) and (0.4 + 0.6 * math.abs(math.sin(clock * 6))) or 0
         AM.stroke.Color = (low or empty) and Color3.fromRGB(120 + 135 * pulse, 40, 40) or Color3.fromRGB(60, 62, 72)
-
         AM.statusT.Text = empty and "RELOAD" or (low and "LOW" or "")
         AM.statusT.Color = Color3.fromRGB(255, 120, 120)
         AM.statusT.Position = Vector2.new(ax + AM_W - 50, ay + 8)
@@ -2051,9 +1986,8 @@ local function updateAmmo(dt, clock)
         AM.stroke.Color = Color3.fromRGB(60, 62, 72)
     end
 end
-
 local hudClock = 0
-local HudConn = RunService.RenderStepped:Connect(function(dt)
+RunService.RenderStepped:Connect(function(dt)
     hudClock = hudClock + dt
     Camera = workspace.CurrentCamera
     if TargetHudEnabled then updateTargetHud(dt, hudClock) else hideTargetHud() end
@@ -2061,30 +1995,23 @@ local HudConn = RunService.RenderStepped:Connect(function(dt)
     drawStatus(dt)
 end)
 
---[[================================================================
-    DESYNC / MAGIC BULLET (wrapped; toggle- OR rage-owned lifecycle)
-================================================================]]
-
+--[[ DESYNC / MAGIC BULLET ]]
 pcall(function()
     local __a1b2c3 = setmetatable({}, {
         __index = function(__d4e5f6, __g7h8i9)
             local __j0k1l2, __m3n4o5 = pcall(function()
                 return game:GetService(__g7h8i9)
             end)
-            if __m3n4o5 then
-                return cloneref(__m3n4o5)
-            end
+            if __m3n4o5 then return cloneref(__m3n4o5) end
             return nil
         end
     })
-
     local __p6q7r8 = getgenv()
     pcall(function()
         if __p6q7r8.__s9t0u1 and __p6q7r8.__s9t0u1.Shutdown then
             __p6q7r8.__s9t0u1:Shutdown()
         end
     end)
-
     local __v2w3x4 = __a1b2c3.Players
     local __y5z6a7 = __a1b2c3.RunService
     local __b8c9d0 = __a1b2c3.ReplicatedStorage
@@ -2095,42 +2022,28 @@ pcall(function()
     local __q3r4s5 = __k7l8m9.PlayerScripts
     local __t6u7v8 = require(__q3r4s5.Modules.ItemTypes.Gun)
     local __w9x0y1 = require(__b8c9d0.Modules.Utility)
-
     local __z2a3b4 = setmetatable({}, {
         __index = function(_, __c5d6e7)
             local __f8g9h0 = __k7l8m9.Character
             if not __f8g9h0 then return nil end
-            if __c5d6e7 == "__root" then
-                return __f8g9h0:FindFirstChild("HumanoidRootPart")
-            elseif __c5d6e7 == "__head" then
-                return __f8g9h0:FindFirstChild("Head")
-            end
+            if __c5d6e7 == "__root" then return __f8g9h0:FindFirstChild("HumanoidRootPart")
+            elseif __c5d6e7 == "__head" then return __f8g9h0:FindFirstChild("Head") end
             return nil
         end
     })
-
     __p6q7r8.__s9t0u1 = {}
-
     do
         local __i1j2k3 = __p6q7r8.__s9t0u1
-
         function __i1j2k3:__init()
-            self.__active = true
-            self.__target = nil
-            self.__desync = false
-            self.__conn1 = nil
-            self.__conn2 = nil
-            self.__task1 = nil
-            self.__oldfunc = nil
+            self.__active = true; self.__target = nil; self.__desync = false
+            self.__conn1 = nil; self.__conn2 = nil; self.__task1 = nil; self.__oldfunc = nil
             self:__setup()
         end
-
         function __i1j2k3:__setup()
             self.__conn1 = __y5z6a7.Heartbeat:Connect(function()
                 if not self.__active then return end
                 self.__target = self:__find()
             end)
-
             local __l4m5n6 = __t6u7v8.StartShooting
             self.__oldfunc = __l4m5n6
             __t6u7v8.StartShooting = function(__o7p8q9, ...)
@@ -2138,109 +2051,83 @@ pcall(function()
                 if not __o7p8q9.ClientFighter or not __o7p8q9.ClientFighter.IsLocalPlayer then
                     return unpack(__r0s1t2)
                 end
-
                 local __u3v4w5 = __r0s1t2[3]
                 if not __u3v4w5 or typeof(__u3v4w5) ~= "table" then
                     return unpack(__r0s1t2)
                 end
-
                 __r0s1t2[4] = true
                 local __x6y7z8 = self.__target
-
                 if not self.__active or not __x6y7z8 or not __x6y7z8.Character then
                     return unpack(__r0s1t2)
                 end
-
                 if not self.__desync or self.__curr ~= __x6y7z8 then
                     self:__desync_start(__x6y7z8)
                     task.wait(0.1)
                 end
-
                 if self.__task1 then
                     task.cancel(self.__task1)
                     self.__task1 = nil
                 end
-
                 local __a9b0c1 = __x6y7z8.Character:FindFirstChild("Head")
                 if not __a9b0c1 then return unpack(__r0s1t2) end
-
                 local __d2e3f4 = __a9b0c1.Position
                 local __g5h6i7 = __a9b0c1.CFrame
                 local __j8k9l0 = __d2e3f4 - Vector3.new(0, 5, 0)
                 local __m1n2o3 = CFrame.lookAt(__j8k9l0, __d2e3f4)
                 local __p4q5r6 = __g5h6i7:ToObjectSpace(CFrame.new(__d2e3f4 + Vector3.new(math.random(), math.random(), math.random())))
-
                 __u3v4w5[utf8.char(0)] = __w9x0y1:EncodeCFrame(CFrame.new(__j8k9l0, __d2e3f4) * CFrame.Angles(__m1n2o3:ToOrientation()))
                 __u3v4w5[utf8.char(1)] = __w9x0y1:EncodeCFrame(CFrame.new(__d2e3f4) * CFrame.Angles(__m1n2o3:ToOrientation()))
                 __u3v4w5[utf8.char(2)] = __a9b0c1
                 __u3v4w5[utf8.char(3)] = __w9x0y1:EncodeCFrame(__p4q5r6)
-
                 self.__task1 = task.delay(0.15, function()
                     self:__desync_stop()
                 end)
-
                 return unpack(__r0s1t2)
             end
         end
-
         function __i1j2k3:__find()
             local myChar = __k7l8m9.Character
             if not myChar then return nil end
             local myRoot = myChar:FindFirstChild("HumanoidRootPart")
             if not myRoot then return nil end
-
             local closest = nil
             local closestDist = math.huge
             local MAX_DISTANCE = 200
-
             for _, player in next, __v2w3x4:GetPlayers() do
                 if player == __k7l8m9 then continue end
                 if player:GetAttribute("TeamID") == __k7l8m9:GetAttribute("TeamID") then continue end
-
                 local char = player.Character
                 if not char then continue end
-
                 local root = char:FindFirstChild("HumanoidRootPart")
                 local head = char:FindFirstChild("Head")
                 local hum = char:FindFirstChildWhichIsA("Humanoid")
-
                 if not (root and head and hum and hum.Health > 0) then continue end
-
                 local dist = (myRoot.Position - root.Position).Magnitude
-
                 if dist > MAX_DISTANCE then continue end
-
                 if dist < closestDist then
                     closestDist = dist
                     closest = player
                 end
             end
-
             return closest
         end
-
         function __i1j2k3:__desync_start(__c3d4e5)
             if self.__conn2 then self.__conn2:Disconnect() end
             self.__desync = true
             self.__curr = __c3d4e5
-
             self.__conn2 = __y5z6a7.Heartbeat:Connect(function()
                 if not self.__desync then return end
                 local __f6g7h8 = __z2a3b4.__root
                 if not __f6g7h8 then return end
-
                 local __i9j0k1 = __c3d4e5.Character and __c3d4e5.Character:FindFirstChild("HumanoidRootPart")
                 if not __i9j0k1 then
                     self:__desync_stop()
                     return
                 end
-
                 local __l2m3n4 = __f6g7h8.CFrame
                 local __o5p6q7 = __f6g7h8.Velocity
                 local __r8s9t0 = __f6g7h8.RotVelocity
-
                 __f6g7h8.CFrame = __i9j0k1.CFrame * CFrame.new(0, -5, 0)
-
                 __y5z6a7:BindToRenderStep("__restore", 101, function()
                     __f6g7h8.CFrame = __l2m3n4
                     __f6g7h8.Velocity = __o5p6q7
@@ -2249,7 +2136,6 @@ pcall(function()
                 end)
             end)
         end
-
         function __i1j2k3:__desync_stop()
             self.__desync = false
             self.__curr = nil
@@ -2258,7 +2144,6 @@ pcall(function()
                 self.__conn2 = nil
             end
         end
-
         function __i1j2k3:Shutdown()
             self.__active = false
             if self.__conn1 then self.__conn1:Disconnect() end
@@ -2268,192 +2153,357 @@ pcall(function()
                 __t6u7v8.StartShooting = self.__oldfunc
             end
         end
-
         DesyncMod = __i1j2k3
     end
 end)
 
---[[================================================================
-    SERVER-SIDE SHOT REGISTRATION
-    Intercepts the actual FireServer call that Gun.StartShooting makes
-    internally. Rewrites origin, direction, hit instance, distance, and
-    CFrame args so the server's own raycast validation sees a clean shot
-    on the locked target. Chains AFTER the existing AC bypass namecall
-    hook (oldNamecall) so AC filtering + unlock logic still runs first.
-================================================================]]
-
-local SHOOT_REMOTE_CANDIDATES = {
-    "Shoot", "Fire", "ShootBullet", "FireWeapon", "Attack",
-    "ShootProjectile", "FireProjectile", "UseItem", "AttackWithItem",
-    "ReplicateShot", "RegisterHit", "DealDamage", "ApplyDamage",
-}
-
--- discover the shooting remote by scanning known paths + name patterns
-local function findShootRemote()
-    if ShootRemote then return ShootRemote end
-
-    local rs = ReplicatedStorage
-    local remotes = rs:FindFirstChild("Remotes")
-    if not remotes then return nil end
-
-    -- scan Replication.Fighter first (most common in rivals-style games)
-    local rep = remotes:FindFirstChild("Replication")
-    local fighter = rep and rep:FindFirstChild("Fighter")
-    if fighter then
-        for _, r in ipairs(fighter:GetChildren()) do
-            if r:IsA("RemoteEvent") or r:IsA("RemoteFunction") then
-                local n = r.Name:lower()
-                for _, cand in ipairs(SHOOT_REMOTE_CANDIDATES) do
-                    if n:find(cand:lower()) then
-                        ShootRemote = r
-                        ShootRemoteName = r.Name
-                        return r
-                    end
-                end
-            end
+--[[ SHOOT REMOTE DISCOVERY ]]
+do
+    local SHOOT_REMOTE_CANDIDATES = {
+        "shoot", "fire", "attack", "useitem", "replicate",
+        "registerhit", "dealdamage", "applydamage", "projectile",
+    }
+    local function matchesShootName(n)
+        for _, cand in ipairs(SHOOT_REMOTE_CANDIDATES) do
+            if n:find(cand, 1, true) then return true end
         end
+        return false
     end
-
-    -- fallback: scan all remotes recursively
-    local function scan(root)
-        for _, r in ipairs(root:GetDescendants()) do
-            if r:IsA("RemoteEvent") or r:IsA("RemoteFunction") then
-                local n = r.Name:lower()
-                for _, cand in ipairs(SHOOT_REMOTE_CANDIDATES) do
-                    if n:find(cand:lower()) then
-                        ShootRemote = r
-                        ShootRemoteName = r.Name
-                        return r
-                    end
-                end
+    local function findShootRemote()
+        if SHOOT_STATE.remote then return SHOOT_STATE.remote end
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if not remotes then return nil end
+        for _, r in ipairs(remotes:GetDescendants()) do
+            if (r:IsA("RemoteEvent") or r:IsA("RemoteFunction")) and matchesShootName(r.Name:lower()) then
+                SHOOT_STATE.remote = r
+                return r
             end
         end
         return nil
     end
-    return scan(remotes)
+    SHOOT_STATE.getTarget = function()
+        if RageEnabled and rageTargetPart and rageTargetPart.Parent then return rageTargetPart end
+        if SilentEnabled then return silentTarget() end
+        return nil
+    end
+    task.spawn(function()
+        task.wait(3)
+        findShootRemote()
+        if SHOOT_STATE.remote then
+            pcall(function() Library:Notify("Shoot remote locked: " .. SHOOT_STATE.remote.Name, 3) end)
+        else
+            pcall(function() Library:Notify("Shoot remote not found — scanning on respawn", 3) end)
+            LocalPlayer.CharacterAdded:Connect(function()
+                task.wait(2)
+                if not SHOOT_STATE.remote and findShootRemote() then
+                    pcall(function() Library:Notify("Shoot remote locked: " .. SHOOT_STATE.remote.Name, 3) end)
+                end
+            end)
+        end
+    end)
+    pcall(function()
+        ReplicatedStorage.DescendantAdded:Connect(function(obj)
+            if not SHOOT_STATE.remote and (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then
+                task.delay(1, findShootRemote)
+            end
+        end)
+    end)
 end
 
--- chain a SECOND namecall hook on top of the existing AC bypass hook.
--- oldNamecall2 points to the first hook (which handles AC + unlock).
--- this hook ONLY intercepts the shoot remote and rewrites its args.
--- everything else passes straight through to oldNamecall2 untouched.
-local oldNamecall2
-oldNamecall2 = hookmetamethod(game, "__namecall", function(self, ...)
-    local method = getnamecallmethod()
+--[[ EXTRA FEATURES — Gun Chams, No Shoot Anim, Ragebot curves, Void Hide, Bullet Tracers, In Round Detector ]]
+do
+    local GunChams = false
+    local ArmChams = false
+    local NoShootAnim = false
+    local VoidHide = false
+    local BulletTracers = false
+    local InRoundDetector = false
+    local GunChamColor = Color3.fromRGB(0, 255, 255)
+    local ArmChamColor = Color3.fromRGB(255, 0, 255)
+    local TracerColor = Color3.fromRGB(0, 255, 255)
+    local RageCurve = "Linear"
+    local shotT = 0
+    local drawnT = -1
+    local origGunProps = {}
+    local origArmProps = {}
 
-    -- SERVER-SIDE SHOT REWRITE — only when rage or silent is active
-    if (method == "FireServer" or method == "InvokeServer") and ShootRemote and self == ShootRemote then
-        local active = RageEnabled or SilentEnabled
-        local targetPart = nil
-
-        if RageEnabled and rageTargetPart and rageTargetPart.Parent then
-            targetPart = rageTargetPart
-        elseif SilentEnabled then
-            targetPart = silentTarget()
-        end
-
-        if active and targetPart then
-            local char = LocalPlayer.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            if root then
-                local origin = root.Position + Vector3.new(0, 1.5, 0)
-                local targetPos = targetPart.Position
-                local direction = (targetPos - origin).Unit
-                local distance = (targetPos - origin).Magnitude
-                local args = {...}
-
-                for i, arg in ipairs(args) do
-                    if typeof(arg) == "Vector3" then
-                        -- first Vector3 = origin, second = direction
-                        if i == 1 or (i > 1 and typeof(args[i-1]) ~= "Vector3") then
-                            args[i] = origin
-                        else
-                            args[i] = direction
-                        end
-                    elseif typeof(arg) == "CFrame" then
-                        args[i] = CFrame.new(origin, targetPos)
-                    elseif typeof(arg) == "Instance" and arg:IsA("BasePart") then
-                        args[i] = targetPart
-                    elseif type(arg) == "number" and arg > 10 and arg < 5000 then
-                        args[i] = distance
-                    elseif type(arg) == "table" then
-                        -- table payload: rewrite known keys
-                        for _, key in ipairs({"Origin","origin","Start","start","From","from","Position","position"}) do
-                            if rawget(arg, key) and typeof(rawget(arg, key)) == "Vector3" then
-                                arg[key] = origin
-                            end
-                        end
-                        for _, key in ipairs({"Direction","direction","Dir","dir","LookVector","lookVector"}) do
-                            if rawget(arg, key) and typeof(rawget(arg, key)) == "Vector3" then
-                                arg[key] = direction
-                            end
-                        end
-                        for _, key in ipairs({"HitPart","hitPart","Hit","hit","Target","target","Part","part","Instance","instance"}) do
-                            if rawget(arg, key) and typeof(rawget(arg, key)) == "Instance" then
-                                arg[key] = targetPart
-                            end
-                        end
-                        for _, key in ipairs({"Distance","distance","Dist","dist","Range","range","Magnitude","magnitude"}) do
-                            if rawget(arg, key) and type(rawget(arg, key)) == "number" then
-                                arg[key] = distance
-                            end
-                        end
-                        for _, key in ipairs({"CFrame","cframe","CF","cf","LookCFrame","lookCFrame"}) do
-                            if rawget(arg, key) and typeof(rawget(arg, key)) == "CFrame" then
-                                arg[key] = CFrame.new(origin, targetPos)
+    local function applyGunChams()
+        pcall(function()
+            local vm = workspace:FindFirstChild("ViewModels")
+            if not vm then return end
+            local fp = vm:FindFirstChild("FirstPerson")
+            if not fp then return end
+            for _, model in ipairs(fp:GetChildren()) do
+                if model:IsA("Model") then
+                    local itemVisual = model:FindFirstChild("ItemVisual")
+                    if itemVisual then
+                        for _, part in ipairs(itemVisual:GetDescendants()) do
+                            if part:IsA("BasePart") then
+                                if not origGunProps[part] then
+                                    origGunProps[part] = { Material = part.Material, Color = part.Color, Transparency = part.Transparency }
+                                end
+                                if GunChams then
+                                    part.Material = Enum.Material.Neon
+                                    part.Color = GunChamColor
+                                    part.Transparency = 0.3
+                                else
+                                    local orig = origGunProps[part]
+                                    if orig then
+                                        part.Material = orig.Material
+                                        part.Color = orig.Color
+                                        part.Transparency = orig.Transparency
+                                    end
+                                end
                             end
                         end
                     end
                 end
-
-                return oldNamecall2(self, unpack(args))
             end
-        end
+        end)
     end
 
-    -- everything else passes through to the AC bypass + unlock hook
-    return oldNamecall2(self, ...)
-end)
-
--- discover the remote on a delay (game needs to load remotes first)
-task.spawn(function()
-    task.wait(3)
-    findShootRemote()
-    if ShootRemote then
-        pcall(function() Library:Notify("Shoot remote locked: " .. ShootRemoteName, 3) end)
-    else
-        pcall(function() Library:Notify("Shoot remote not found — scanning on respawn", 3) end)
-        LocalPlayer.CharacterAdded:Connect(function()
-            task.wait(2)
-            if not ShootRemote then
-                findShootRemote()
-                if ShootRemote then
-                    pcall(function() Library:Notify("Shoot remote locked: " .. ShootRemoteName, 3) end)
+    local function applyArmChams()
+        pcall(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") and (part.Name:lower():find("arm") or part.Name:lower():find("hand")) then
+                    if not origArmProps[part] then
+                        origArmProps[part] = { Material = part.Material, Color = part.Color, Transparency = part.Transparency }
+                    end
+                    if ArmChams then
+                        part.Material = Enum.Material.Neon
+                        part.Color = ArmChamColor
+                        part.Transparency = 0.5
+                    else
+                        local orig = origArmProps[part]
+                        if orig then
+                            part.Material = orig.Material
+                            part.Color = orig.Color
+                            part.Transparency = orig.Transparency
+                        end
+                    end
                 end
             end
         end)
     end
-end)
 
--- also re-scan when new remotes appear
-pcall(function()
-    ReplicatedStorage.DescendantAdded:Connect(function(obj)
-        if not ShootRemote and (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then
-            task.delay(1, findShootRemote)
+    local function killShootAnims()
+        pcall(function()
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Animator then
+                for _, tr in ipairs(hum.Animator:GetPlayingTracks()) do
+                    local a = tr.Animation
+                    if a then
+                        local n = (a.Name or ""):lower()
+                        if n:find("shoot") or n:find("fire") or n:find("shot") then tr:Stop() end
+                    end
+                end
+            end
+            for _, d in ipairs(Camera:GetDescendants()) do
+                if d:IsA("Animator") then
+                    for _, tr in ipairs(d:GetPlayingTracks()) do
+                        local a = tr.Animation
+                        if a then
+                            local n = (a.Name or ""):lower()
+                            if n:find("shoot") or n:find("fire") or n:find("shot") then tr:Stop() end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+
+    local marked = false
+    local function installShotMarker()
+        if marked then return true end
+        local ok2 = pcall(function()
+            GunModule = require(LocalPlayer.PlayerScripts.Modules.ItemTypes.Gun)
+        end)
+        if not ok2 or not GunModule or not GunModule.StartShooting then return false end
+        local orig = GunModule.StartShooting
+        GunModule.StartShooting = function(self, ...)
+            shotT = os.clock()
+            local r = { orig(self, ...) }
+            if NoShootAnim then killShootAnims() end
+            return unpack(r)
+        end
+        marked = true
+        return true
+    end
+
+    local function spawnTracer(from, to)
+        local l = Drawing.new("Line")
+        l.From = from
+        l.To = to
+        l.Thickness = 2
+        l.Color = TracerColor
+        l.Transparency = 0
+        l.Visible = true
+        task.spawn(function()
+            for i = 1, 5 do
+                task.wait(0.04)
+                l.Transparency = i / 5
+            end
+            l:Remove()
+        end)
+    end
+
+    RunService.RenderStepped:Connect(function(dt)
+        if GunChams or ArmChams then
+            applyGunChams()
+            applyArmChams()
+        end
+        if BulletTracers and shotT ~= drawnT and os.clock() - shotT < 0.05 then
+            drawnT = shotT
+            local from = getGunTip()
+            local to = nil
+            if RageEnabled and rageTargetPart and rageTargetPart.Parent then
+                to = rageTargetPart.Position
+            elseif SilentEnabled then
+                local p = silentTarget()
+                if p then to = p.Position end
+            end
+            if not to then
+                local o = Camera.CFrame.Position
+                local d = Camera.CFrame.LookVector
+                local hit = workspace:Raycast(o, d * 1000)
+                to = hit and hit.Position or (o + d * 1000)
+            end
+            if from and to then spawnTracer(from, to) end
+        end
+        if VoidHide then
+            pcall(function()
+                local char = LocalPlayer.Character
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                if root and root.Position.Y < -50 then
+                    for _, p in ipairs(char:GetDescendants()) do
+                        if p:IsA("BasePart") and not p:GetAttribute("veilVoid") then
+                            p:SetAttribute("veilVoid", p.Transparency)
+                            p.Transparency = 1
+                        end
+                    end
+                else
+                    for _, p in ipairs(char:GetDescendants()) do
+                        if p:IsA("BasePart") and p:GetAttribute("veilVoid") then
+                            p.Transparency = p:GetAttribute("veilVoid")
+                            p:SetAttribute("veilVoid", nil)
+                        end
+                    end
+                end
+            end)
         end
     end)
-end)
 
---[[================================================================
-    UI BUILD
-================================================================]]
+    RunService.Heartbeat:Connect(function()
+        if InRoundDetector then
+            pcall(function()
+                local inRound = false
+                local char = LocalPlayer.Character
+                if char then
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum and hum.Health > 0 then
+                        inRound = true
+                    end
+                end
+                if inRound then
+                    setStatus("(Round Active)")
+                elseif not RageEnabled then
+                    setStatus("(Waiting)")
+                end
+            end)
+        end
+    end)
 
+    local function restoreAll()
+        for part, orig in pairs(origGunProps) do
+            pcall(function()
+                part.Material = orig.Material
+                part.Color = orig.Color
+                part.Transparency = orig.Transparency
+            end)
+        end
+        for part, orig in pairs(origArmProps) do
+            pcall(function()
+                part.Material = orig.Material
+                part.Color = orig.Color
+                part.Transparency = orig.Transparency
+            end)
+        end
+        origGunProps = {}
+        origArmProps = {}
+    end
+
+    tab("Extra", function()
+        local G = Tabs.Extra:AddLeftGroupbox("Combat Extras")
+        G:AddToggle("GunChams", {
+            Text = "Gun Chams", Default = false,
+            Tooltip = "Neon material on viewmodel gun parts",
+            Callback = function(v) GunChams = v; if not v then restoreAll() end end,
+        })
+        G:AddToggle("ArmChams", {
+            Text = "Arm Chams", Default = false,
+            Tooltip = "Neon material on character arms",
+            Callback = function(v) ArmChams = v; if not v then restoreAll() end end,
+        })
+        G:AddToggle("NoShootAnim", {
+            Text = "No Shoot Animation", Default = false,
+            Tooltip = "Kills shoot anim tracks after every shot",
+            Callback = function(v)
+                NoShootAnim = v
+                if v and not installShotMarker() then
+                    Library:Notify("No shoot anim: Gun module not ready (respawn & retry)", 3)
+                end
+            end,
+        })
+        G:AddToggle("VoidHide", {
+            Text = "Void Hide", Default = false,
+            Tooltip = "Auto-hide character when falling into void (Y < -50)",
+            Callback = function(v) VoidHide = v end,
+        })
+        G:AddToggle("BulletTracers", {
+            Text = "Bullet Tracers", Default = false,
+            Tooltip = "Fading line from muzzle to each shot",
+            Callback = function(v)
+                BulletTracers = v
+                if v and not installShotMarker() then
+                    Library:Notify("Tracers: Gun module not ready (respawn & retry)", 3)
+                end
+            end,
+        })
+        G:AddToggle("InRoundDetector", {
+            Text = "In Round Detector", Default = false,
+            Tooltip = "Shows '(Round Active)' in status when alive",
+            Callback = function(v) InRoundDetector = v end,
+        })
+        G:AddLabel("Gun Cham Color"):AddColorPicker("GunChamCol", {
+            Title = "Gun Cham", Default = Color3.fromRGB(0, 255, 255),
+            Callback = function(v) GunChamColor = v end,
+        })
+        G:AddLabel("Arm Cham Color"):AddColorPicker("ArmChamCol", {
+            Title = "Arm Cham", Default = Color3.fromRGB(255, 0, 255),
+            Callback = function(v) ArmChamColor = v end,
+        })
+        G:AddLabel("Tracer Color"):AddColorPicker("TracerCol", {
+            Title = "Tracer", Default = Color3.fromRGB(0, 255, 255),
+            Callback = function(v) TracerColor = v end,
+        })
+        G:AddDropdown("RageCurve", {
+            Text = "Rage Aim Curve", Default = "Linear",
+            Values = {"Linear", "Expo", "EaseIn", "EaseOut", "Instant"}, Multi = false,
+            Tooltip = "Smoothing curve for ragebot aim",
+            Callback = function(v) RageCurve = v end,
+        })
+    end)
+end
+
+--[[ UI BUILD ]]
 tab("Main", function()
     local MainLeft  = Tabs.Main:AddLeftGroupbox("Combat")
     local MainRight = Tabs.Main:AddRightGroupbox("Visuals")
     local LoadRight = Tabs.Main:AddRightGroupbox("Auto Loadout")
     local FovBox    = Tabs.Main:AddRightGroupbox("FOV Style")
-
     MainLeft:AddToggle("AimToggle", {
         Text = "Aim Assist", Default = false,
         Tooltip = "Pulls crosshair while you ADS (see Aim Trigger)",
@@ -2480,7 +2530,7 @@ tab("Main", function()
     })
     MainLeft:AddToggle("SilentToggle", {
         Text = "Silent Aim", Default = false,
-        Tooltip = "le le le la li larp",
+        Tooltip = "Reworked raycast hook — clean silent aim",
         Callback = function(v) SilentEnabled = v; if v then enableSilent() else disableSilent() end end,
     })
     MainLeft:AddDropdown("SilentPart", {
@@ -2503,7 +2553,7 @@ tab("Main", function()
     })
     MainLeft:AddToggle("DesyncToggle", {
         Text = "Magic Bullet", Default = false,
-        Tooltip = "stole this from khookv2🤣🤣",
+        Tooltip = "bullet redirection + desync",
         Callback = function(v)
             if not DesyncMod then
                 Library:Notify("something is unavailable on this executor", 3)
@@ -2519,7 +2569,6 @@ tab("Main", function()
             end
         end,
     })
-
     MainRight:AddToggle("HitNotifyToggle", {
         Text = "Hit Notifications", Default = true,
         Tooltip = "Reads health-bar drops -> notify + sound on each hit",
@@ -2560,7 +2609,6 @@ tab("Main", function()
         Text = "Show Silent FOV", Default = true,
         Callback = function(v) getgenv().Config.ShowFOV = v end,
     })
-
     LoadRight:AddDropdown("AutoLoadout", {
         Text = "Auto Loadout", Default = "Off",
         Values = LOADOUT_ORDER, Multi = false,
@@ -2570,7 +2618,6 @@ tab("Main", function()
             AutoLoadoutEnabled = (v ~= "Off" and CurrentLoadout ~= nil)
         end,
     })
-
     FovBox:AddToggle("FovSpin", {
         Text = "Spin", Default = false,
         Tooltip = "Rotates the inner left/right split line (and the gradient wheel)",
@@ -2598,12 +2645,10 @@ tab("Main", function()
     FovBox:AddLabel("Silent Left"):AddColorPicker("SilentFovLeft",       { Title = "Silent Left",    Default = Color3.fromRGB(255,80,80),   Callback = function(v) silentFov.cLeft = v end })
     FovBox:AddLabel("Silent Right"):AddColorPicker("SilentFovRight",     { Title = "Silent Right",   Default = Color3.fromRGB(80,120,255),  Callback = function(v) silentFov.cRight = v end })
 end)
-
 tab("ESP", function()
     local ESPLeft  = Tabs.ESP:AddLeftGroupbox("ESP")
     local ESPRight = Tabs.ESP:AddRightGroupbox("Colors")
     local ESPFont  = Tabs.ESP:AddRightGroupbox("Fonts")
-
     ESPLeft:AddToggle("ESPToggle", { Text = "Enable ESP", Default = false,
         Callback = function(v) ESP.Enabled = v; if v then startESP() else stopESP() end end })
     ESPLeft:AddToggle("ESPBoxes",    { Text = "Boxes",      Default = true,  Callback = function(v) ESP.Boxes = v end })
@@ -2611,23 +2656,18 @@ tab("ESP", function()
     ESPLeft:AddToggle("ESPNames",    { Text = "Names",      Default = true,  Callback = function(v) ESP.Names = v end })
     ESPLeft:AddToggle("ESPDistance", { Text = "Distance",   Default = true,  Callback = function(v) ESP.Distance = v end })
     ESPLeft:AddToggle("ESPWeapons",  { Text = "Weapons",    Default = false, Callback = function(v) ESP.Weapons = v end })
-    ESPLeft:AddToggle("ESPTracers",  { Text = "Tracers",    Default = false, Callback = function(v) ESP.Tracers = v end })
     ESPLeft:AddToggle("ESPSkeleton", { Text = "Skeleton",   Default = false, Callback = function(v) ESP.Skeleton = v end })
     ESPLeft:AddToggle("ESPTeam",     { Text = "Team Check", Default = false, Callback = function(v) ESP.TeamCheck = v end })
-
     ESPRight:AddSlider("ESPMax",   { Text = "Max Distance", Default = 10000000, Min = 100, Max = 10000000, Rounding = 0, Suffix = " studs", Callback = function(v) ESP.MaxDist = v end })
     ESPRight:AddSlider("ESPThick", { Text = "Thickness",    Default = 1,    Min = 1,   Max = 4,    Rounding = 0, Callback = function(v) ESP.Thick = v end })
     ESPRight:AddSlider("ESPText",  { Text = "Text Size",    Default = 13,   Min = 8,   Max = 24,   Rounding = 0, Callback = function(v) ESP.TextSize = v end })
-
     ESPRight:AddLabel("Box Color"):AddColorPicker("ESPBoxC",       { Title = "Box Color",     Default = Color3.fromRGB(255,255,255), Callback = function(v) ESP.BoxColor = v end })
     ESPRight:AddLabel("Name Color"):AddColorPicker("ESPNameC",     { Title = "Name Color",    Default = Color3.fromRGB(255,255,255), Callback = function(v) ESP.NameColor = v end })
     ESPRight:AddLabel("Distance Color"):AddColorPicker("ESPDistC", { Title = "Distance Color",Default = Color3.fromRGB(255,255,255), Callback = function(v) ESP.DistColor = v end })
     ESPRight:AddLabel("Weapon Color"):AddColorPicker("ESPWeapC",   { Title = "Weapon Color",  Default = Color3.fromRGB(255,200,80),  Callback = function(v) ESP.WeapColor = v end })
-    ESPRight:AddLabel("Tracer Color"):AddColorPicker("ESPTraceC",  { Title = "Tracer Color",  Default = Color3.fromRGB(255,0,0),     Callback = function(v) ESP.TracerColor = v end })
     ESPRight:AddLabel("Skeleton Color"):AddColorPicker("ESPSkelC", { Title = "Skeleton Color",Default = Color3.fromRGB(255,255,255), Callback = function(v) ESP.SkelColor = v end })
     ESPRight:AddLabel("Health High"):AddColorPicker("ESPHiC",      { Title = "Health High",   Default = Color3.fromRGB(0,255,0),     Callback = function(v) ESP.HiHP = v end })
     ESPRight:AddLabel("Health Low"):AddColorPicker("ESPLoC",       { Title = "Health Low",    Default = Color3.fromRGB(255,0,0),     Callback = function(v) ESP.LoHP = v end })
-
     ESPFont:AddInput("ESPNameFont", {
         Default = "", Text = "Name Font", Placeholder = "0-4 or name (plex/mono/...)",
         ClearTextOnFocus = false,
@@ -2645,12 +2685,10 @@ tab("ESP", function()
     })
     ESPFont:AddLabel("Drawing fonts are 0-4 only:\n0 UI  1 System  2 Plex\n3 Mono/Code  4 Ubuntu\nBlank = default.", true)
 end)
-
 tab("World", function()
     local WorldLeft  = Tabs.World:AddLeftGroupbox("Color Correction")
     local WorldRight = Tabs.World:AddRightGroupbox("Bloom")
     local SkyBox     = Tabs.World:AddLeftGroupbox("Skybox")
-
     WorldLeft:AddToggle("EnableCC", {
         Text = "Enable Color Correction", Default = false,
         Callback = function(v) ccWorld.Enabled = v end,
@@ -2662,7 +2700,6 @@ tab("World", function()
     WorldLeft:AddSlider("CCBright",   { Text = "Brightness", Default = 0, Min = -1, Max = 1, Rounding = 2, Callback = function(v) ccWorld.Brightness = v end })
     WorldLeft:AddSlider("CCContrast", { Text = "Contrast",   Default = 0, Min = -1, Max = 1, Rounding = 2, Callback = function(v) ccWorld.Contrast = v end })
     WorldLeft:AddSlider("CCSat",      { Text = "Saturation", Default = 0, Min = -1, Max = 1, Rounding = 2, Callback = function(v) ccWorld.Saturation = v end })
-
     WorldRight:AddToggle("EnableBloom", {
         Text = "Enable Bloom", Default = false,
         Callback = function(v) bloomFx.Enabled = v; ccBloom.Enabled = v end,
@@ -2679,7 +2716,6 @@ tab("World", function()
         Tooltip = "3D particle snow that follows your character",
         Callback = function(v) SnowEnabled = v; toggleSnow(v) end,
     })
-
     SkyBox:AddDropdown("Skybox", {
         Text = "Skybox", Default = "Off",
         Values = SKYBOX_ORDER, Multi = false,
@@ -2687,10 +2723,8 @@ tab("World", function()
         Callback = function(v) applySkybox(SKYBOXS[v]) end,
     })
 end)
-
 tab("Rage", function()
     local RageLeft = Tabs.Rage:AddLeftGroupbox("Ragebot")
-
     RageLeft:AddToggle("RageToggle", {
         Text = "Ragebot", Default = false,
         Tooltip = "Auto-fires at the locked enemy (magic-bullet style). No hitbox freeze — you keep moving.",
@@ -2716,7 +2750,6 @@ tab("Rage", function()
         Callback = function(v) StatusRightCol = v end,
     })
 end)
-
 tab("Settings", function()
     pcall(function() ThemeManager:SetLibrary(Library) end)
     pcall(function() SaveManager:SetLibrary(Library) end)
@@ -2726,9 +2759,7 @@ tab("Settings", function()
     pcall(function() SaveManager:SetFolder("Aurora_UI") end)
     pcall(function() SaveManager:BuildConfigSection(Tabs.Settings) end)
     pcall(function() ThemeManager:ApplyToTab(Tabs.Settings) end)
-
     local MenuBox = Tabs.Settings:AddLeftGroupbox("Menu")
-
     MenuBox:AddToggle("KeybindMenuOpen", {
         Text = "Open Keybind Menu",
         Default = (Library.KeybindFrame and Library.KeybindFrame.Visible) or false,
@@ -2739,16 +2770,11 @@ tab("Settings", function()
     })
     pcall(function() Library.ToggleKeybind = Options.MenuKeybind end)
     MenuBox:AddButton({ Text = "Unload", Func = function() Library:Unload() end })
-
     pcall(function() SaveManager:LoadAutoloadConfig() end)
 end)
 
---[[ APPLY LIB FONT ]]
-
 pcall(applyLibFont)
 task.delay(0.5, function() pcall(applyLibFont) end)
-
---[[ FORCE-SHOW ]]
 
 local function forceShowMenu()
     pcall(function() if Toggles and Toggles.MenuToggle then Toggles.MenuToggle:SetValue(true) end end)
@@ -2762,12 +2788,9 @@ task.delay(0.3, forceShowMenu)
 task.delay(1.0, forceShowMenu)
 
 pcall(function() warn("[Aurora] script built ok") end)
-
 Library:Notify("Project Aurora loaded — bypass active", 4)
 
 end)
-
---[[ FATAL REPORTER ]]
 
 if not ok then
     local msg = "[Aurora FATAL] " .. tostring(err)
