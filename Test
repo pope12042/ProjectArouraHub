@@ -367,7 +367,7 @@ RageStatusGroup:AddDropdown("StatusTextParts", {
     Tooltip = "Ammo + Max Ammo together render {ammo}/{max}. Ragebot line only shows while ragebot is toggled. Empty = full legacy text.",
 })
 
--- Visuals Tab (MY ESP: fixed scale, distance, tracers, arrows, white defaults)
+-- Visuals Tab
 local ESPGroup = Tabs.Visuals:AddLeftGroupbox("Player ESP")
 ESPGroup:AddToggle("ESPEnabled", { Text = "Enable ESP", Default = false })
     :AddColorPicker("ESPVisibleColor", { Default = Color3.new(1, 1, 1), Title = "Visible Color" })
@@ -530,7 +530,7 @@ SaveManager:BuildConfigSection(Tabs["UI Settings"])
 ThemeManager:ApplyToTab(Tabs["UI Settings"])
 SaveManager:LoadAutoloadConfig()
 
--- // 5. Screen Elements (your FOV circle / status / hitsound verbatim) + damage text gui
+-- // 5. Screen Elements
 local gethui = gethui or function() return game:GetService("CoreGui") end
 
 local StatusGui = Instance.new("ScreenGui")
@@ -616,14 +616,12 @@ local function ShowDamageText(worldPos, damage)
     end)
 end
 
--- Smoothed follow anchors (gun tip + target), Kicia-style transitions
 local SmoothGunTipScreen = Vector2.new(0, 0)
 local SmoothTargetScreen = Vector2.new(0, 0)
 local LastSilentTargetPart = nil
 local RageTargetHead = nil
 local StatusTargetPart = nil
 
--- ADS hold tracking
 local AdsHeld = false
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if input.UserInputType == Enum.UserInputType.MouseButton2 then AdsHeld = true end
@@ -632,7 +630,7 @@ UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton2 then AdsHeld = false end
 end)
 
--- // 6. Gun info / gun tip / camera controller helpers (UNCHANGED)
+-- // 6. Gun info helpers
 local CameraControllerModule = nil
 local function ResolveCameraController()
     if CameraControllerModule then return CameraControllerModule end
@@ -680,7 +678,7 @@ local function GetGunTipWorld()
     return cam.CFrame.Position + cam.CFrame.LookVector * 3
 end
 
--- // 7. Viewmodel chams reconcile (gun + arms, UNCHANGED)
+-- // 7. Viewmodel chams reconcile
 local ChamsCache = {}
 local function ReconcileChams()
     local vp = workspace:FindFirstChild("ViewModels")
@@ -735,7 +733,7 @@ local function ReconcileChams()
     end
 end
 
--- // 8. UI Sync Loop (your sync block verbatim + new additive keys)
+-- // 8. UI Sync Loop
 local cc = Instance.new("ColorCorrectionEffect", Lighting)
 local bloom = Instance.new("BloomEffect", Lighting)
 local spinAngle = 0
@@ -839,14 +837,12 @@ RunService.RenderStepped:Connect(function(dt)
     getgenv().Config.RageHideVoid = Options.RageHideVoid.Value
     getgenv().Config.RageStrafe = Toggles.RageStrafe.Value
 
-    -- Smoothed gun tip anchor (transitioned)
     local gp, gon = camNow:WorldToViewportPoint(GetGunTipWorld())
     if gon then
         local desired = Vector2.new(gp.X, gp.Y)
         SmoothGunTipScreen = (SmoothGunTipScreen == Vector2.new(0, 0)) and desired or SmoothGunTipScreen:Lerp(desired, 0.35)
     end
 
-    -- Smoothed target anchor
     StatusTargetPart = (LastSilentTargetPart and LastSilentTargetPart.Parent and LastSilentTargetPart)
         or (RageTargetHead and RageTargetHead.Parent and RageTargetHead) or nil
     if StatusTargetPart then
@@ -857,7 +853,6 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- Status label: font/size/gradient + follow positioning
     StatusLabel.Font = resolveFont(Options.StatusFont.Value)
     StatusLabel.TextSize = Options.StatusSize.Value
     StatusGradient.Color = ColorSequence.new(Options.StatusColor1.Value, Options.StatusColor2.Value)
@@ -872,7 +867,6 @@ RunService.RenderStepped:Connect(function(dt)
         )
     end
 
-    -- FOV circle: spin, gradient, and gun-tip follow position (your original)
     spinAngle = spinAngle + getgenv().Config.FOVSpinSpeed
     UIGradient.Rotation = spinAngle
     UIGradient.Color = ColorSequence.new({
@@ -887,7 +881,6 @@ RunService.RenderStepped:Connect(function(dt)
     end
     FOVCircleFrame.Visible = getgenv().Config.ShowFOV
 
-    -- ADS aim assist (your original)
     if getgenv().Config.ADSAim and AdsHeld then
         local adsCenter = (getgenv().Config.SilentFollow == "Follow Gun Tip") and SmoothGunTipScreen
             or Vector2.new(camNow.ViewportSize.X / 2, camNow.ViewportSize.Y / 2)
@@ -910,7 +903,6 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- Lighting (your original color correction + bloom)
     cc.Enabled = getgenv().Config.ColorCorrection
     cc.Brightness = getgenv().Config.CCBrightness / 100
     cc.Contrast = getgenv().Config.CCContrast / 100
@@ -924,7 +916,6 @@ RunService.RenderStepped:Connect(function(dt)
 
     HitSound.Volume = getgenv().Config.HitsoundVolume
 
-    -- Chams reconcile throttled
     chamsAccum = chamsAccum + (dt or 0.016)
     if chamsAccum >= 0.25 then
         chamsAccum = 0
@@ -932,7 +923,7 @@ RunService.RenderStepped:Connect(function(dt)
     end
 end)
 
--- // 8b. ADDITIVE: Skybox apply (only runs on dropdown change)
+-- // 8b. Skybox apply
 local AppliedSky = nil
 local function ApplySkybox(name)
     local preset = (name and name ~= "None") and SkyPresets[name] or nil
@@ -958,7 +949,7 @@ local function ApplySkybox(name)
 end
 Options.SkyboxPreset:OnChanged(function(value) ApplySkybox(value) end)
 
--- // 8c. ADDITIVE: Aspect ratio (toggle-gated, Camera+1 so it never compounds)
+-- // 8c. Aspect ratio
 local stretchBound = false
 local stretchCam, stretchBase, stretchResult = nil, nil, nil
 RunService:BindToRenderStep("RivalsStretch", Enum.RenderPriority.Camera.Value + 1, function()
@@ -982,7 +973,7 @@ RunService:BindToRenderStep("RivalsStretch", Enum.RenderPriority.Camera.Value + 
     cam.CFrame = result
 end)
 
--- // 9. Silent Aim Hook (your original, UNCHANGED)
+-- // 9. Silent Aim Hook
 local phem2_cs = game:GetService("CollectionService")
 local phem7 = require(ReplicatedStorage.Modules.Utility)
 local phem8 = phem7.Raycast
@@ -1022,7 +1013,7 @@ phem7.Raycast = function(self, phem19, phem20, phem21, phem22, phem23, phem24)
     return { Position = phem26, Distance = phem28, Instance = phem25, Material = phem25.Material, Normal = -phem27 }
 end
 
--- // 10. ESP (MY build: fixed near-big/far-small scale, distance, tracers, arrows, visibility colors)
+-- // 10. ESP
 local function enemyOk(player)
     if player == LocalPlayer then return false end
     if not getgenv().Config.TeamCheck then return true end
@@ -1239,7 +1230,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- // 11. ADDITIVE: Mobile Fly UI (joystick + hold buttons) + fly physics
+-- // 11. Mobile Fly UI
 local FlyGui = Instance.new("ScreenGui")
 FlyGui.Name = "RivalsFlyGui"
 FlyGui.IgnoreGuiInset = true
@@ -1379,7 +1370,7 @@ RunService.Heartbeat:Connect(function()
     hrp.AssemblyLinearVelocity = horizontal * speed + Vector3.new(0, vz * speed, 0)
 end)
 
--- // 12. RAGEBOT (your working one, VERBATIM — not modified)
+-- // 12. RAGEBOT
 local repS = cloneref(game:GetService("ReplicatedStorage"))
 local plrs = cloneref(game:GetService("Players"))
 local runS = cloneref(game:GetService("RunService"))
@@ -1515,7 +1506,6 @@ local function hasKnifeViewModel(targetPlayer)
     return false
 end
 
--- Kicia-mined orbit constants (weapon ranges, wobble, in/out toggle rate)
 local RAGE_WEAPON_RANGES = {
     ["Shotgun"] = { In = 5, Out = 5 },
 }
@@ -1536,7 +1526,6 @@ runS.Heartbeat:Connect(function(dt)
         local info = equipped and equipped.Info or nil
         local isMelee = (info and (info.Class == "Melee" or info.Type == "Melee")) or hasKnifeViewModel(targetPlayer)
         if isMelee then
-            -- proven close-offset hover, untouched
             local desyncPos
             if hasKnifeViewModel(targetPlayer) then
                 desyncPos = (targetRoot.CFrame * CFrame.new(0, 6, 0)).Position
@@ -1547,7 +1536,6 @@ runS.Heartbeat:Connect(function(dt)
             RageHoldCF = desyncCF
             RageHoldAt = tick()
         else
-            -- gun mode: Kicia-style orbit + height wobble + in/out radius toggle + LOS gate
             RagePhaseClock = RagePhaseClock + (dt or 0.016) * Options.RageOrbitSpeed.Value
             local ranges = (equipped and RAGE_WEAPON_RANGES[equipped.Name]) or RAGE_DEFAULT_RANGES
             local radius = (math.floor(tick() * 15) % 2 == 0) and ranges.In or ranges.Out
@@ -1575,7 +1563,7 @@ runS.Heartbeat:Connect(function(dt)
     end
 
     if desyncCF and lplr.Character then
-        if getgenv().Config.RageHide and deflecting[targetPlayer] then
+        if getgenv().Config.RageHide and targetPlayer and deflecting[targetPlayer] then
             local voidDepth = (getgenv().Config.RageHideVoid or 50) * 5
             desyncCF = desyncCF * CFrame.new(0, -voidDepth, 0)
         end
@@ -1636,7 +1624,7 @@ runS.Heartbeat:Connect(function(dt)
     )
 end)
 
--- // 13. CONFIRMED-HIT FEEDBACK (only YOUR hits): DamageNumberEffect replication parse
+-- // 13. CONFIRMED-HIT FEEDBACK
 local function localObjectId()
     local fighter = FighterControllerSafe and FighterControllerSafe.LocalFighter or nil
     local data = type(fighter) == "table" and rawget(fighter, "Data") or nil
@@ -1723,7 +1711,7 @@ task.spawn(function()
     end)
 end)
 
--- // 14. Status Text composer (your original verbatim)
+-- // 14. Status Text composer
 local currentStateText = ""
 
 runS.Heartbeat:Connect(function()
@@ -1782,7 +1770,7 @@ runS.Heartbeat:Connect(function()
     end
 end)
 
--- // 15. Spoofers & Rapid Fire (your originals, UNCHANGED) + additive movement
+-- // 15. Spoofers & Rapid Fire
 pcall(function()
     local Gun = require(LocalPlayer.PlayerScripts.Modules.ItemTypes.Gun)
     if Gun and Gun.Update then
@@ -1831,7 +1819,7 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- // 16. Unlock All Cosmetics (NEW REPLACEMENT)
+-- // 16. Unlock All Cosmetics
 local UnlockInstalled = false
 local function enableUnlockAll()
     if UnlockInstalled then return end
@@ -2158,10 +2146,14 @@ Instance.new("UIListLayout", WScroll).Padding = UDim.new(0, 4)
 
 local function buildWeaponsUI()
     for _, c in WScroll:GetChildren() do if c:IsA("Frame") then c:Destroy() end end
-    local ok, r2 = pcall(readfile, "rivals_config.lua")
-    if not ok or not r2 then
-        local ok2, r22 = pcall(readfile, "rivals_config (1).lua")
-        if ok2 and r22 then r2 = r22 end
+    local r2 = nil
+    for i = 20, 1, -1 do
+        local o, r = pcall(readfile, "rivals_config (" .. i .. ").lua")
+        if o and r and #r > 0 then r2 = r break end
+    end
+    if not r2 then
+        local o, r = pcall(readfile, "rivals_config.lua")
+        if o and r then r2 = r end
     end
     if not r2 then return end
     local en = {}
@@ -2180,7 +2172,7 @@ local function buildWeaponsUI()
         item.BorderSizePixel = 0
         item.Parent = WScroll
         Instance.new("UICorner", item).CornerRadius = UDim.new(0, 6)
-        
+
         local name = Instance.new("TextLabel")
         name.Size = UDim2.new(1, -10, 0, 18)
         name.Position = UDim2.new(0, 5, 0, 2)
@@ -2191,7 +2183,7 @@ local function buildWeaponsUI()
         name.TextSize = 12
         name.TextXAlignment = Enum.TextXAlignment.Left
         name.Parent = item
-        
+
         local wrap = Instance.new("TextLabel")
         wrap.Size = UDim2.new(1, -10, 0, 16)
         wrap.Position = UDim2.new(0, 5, 0, 20)
@@ -2208,63 +2200,61 @@ end
 local weaponsMenuTask = nil
 Toggles.ShowWeaponsMenu:OnChanged(function(val)
     WeaponsMenuGui.Enabled = val
-    if val then
-        buildWeaponsUI()
-        if not weaponsMenuTask then
-            weaponsMenuTask = task.spawn(function()
-                if not pcall(memory_read,"int",game.Address) then pcall(notify,"UnsafeLua off!","SC",5) return end
-                local _bo,_bs=pcall(function() return game:HttpGet("https://raw.githubusercontent.com/27timenumber1gurningchampionworldwide/matcha/refs/heads/main/status") end);if _bo and _bs then _bs=_bs:match("^%s*(.-)%s*$") end;if not _bo or not _bs or _bs~="1" then pcall(notify,"Beta paused.","SC",5) return end
-                local mrd,mwr,pcall,ipairs,pairs=memory_read,memory_write,pcall,ipairs,pairs;local floor,byte,rnd=math.floor,string.byte,math.random
-                local rd=function(a) local o,v=pcall(mrd,"uintptr_t",a);return o and v or nil end;local wr=function(a,v) pcall(mwr,"uintptr_t",a,v) end
-                local r2;for i=20,1,-1 do local o,r=pcall(readfile,"rivals_config ("..i..").lua");if o and r and #r>0 then r2=r;break end end
-                if not r2 then local o,r=pcall(readfile,"rivals_config.lua");if o and r then r2=r end end;if not r2 then pcall(notify,"No config!","SC",5);return end
-                local en={};for l in r2:gmatch("[^\r\n]+") do local q=l:find("=");if q then local w,s=l:sub(1,q-1):match("^%s*(.-)%s*$"),l:sub(q+1):match("^%s*(.-)%s*$");if #w>0 and #s>0 then en[#en+1]={w,s} end end end;if #en==0 then pcall(notify,"Empty config!","SC",5);return end
-                task.spawn(function() local pfx=function(n) return n:lower():gsub("[%s%-'%.]+","") end;local AL;for i=1,30 do pcall(function() AL=game:GetService("ReplicatedStorage"):FindFirstChild("Modules") and game:GetService("ReplicatedStorage").Modules:FindFirstChild("AnimationLibrary") end);if AL then break end;task.wait(1) end;if not AL then return end;local SC=AL:FindFirstChild("SoundCallbacks");if not SC then return end;local abn={};for _,c in ipairs(SC:GetChildren()) do abn[c.Name]=c end;for _,e in ipairs(en) do local wp,sp=pfx(e[1]),pfx(e[2]);local spfx=wp.."_"..sp.."_";for name,inst in pairs(abn) do if name:sub(1,#spfx)==spfx then local di=abn[wp.."_"..name:sub(#spfx+1)];if di then local a,b=mrd("uintptr_t",di.Address+0x8),mrd("uintptr_t",inst.Address+0x8);if a and b and a~=b then mwr("uintptr_t",di.Address+0x8,b);mwr("uintptr_t",inst.Address+0x8,a) end end end end end end)
-                local LP;repeat task.wait(1);LP=game:GetService("Players").LocalPlayer until LP;if game.GameId~=6035872082 then return end
-                local OFF={Parent=0x70,Children=0x78,Name=0xB0};pcall(function() local hs=game:GetService("HttpService") local raw=game:HttpGet("https://imtheo.lol/Offsets/Offsets.json") if raw and #raw>100 then local o2=hs:JSONDecode(raw).Offsets if o2 and o2.Instance then if o2.Instance.Parent then OFF.Parent=o2.Instance.Parent OFF.Children=o2.Instance.Parent+8 end if o2.Instance.Name then OFF.Name=o2.Instance.Name end end end end end)
-                local A,vm,wf,mi;repeat task.wait(1);pcall(function() A=LP.PlayerScripts.Assets;vm=A.ViewModels;wf=vm.Weapons;mi=A.Misc end) until wf;repeat task.wait(1) until LP.Character
-                local tf,pf,PG=A:FindFirstChild("Throwables"),A:FindFirstChild("Projectiles"),LP:FindFirstChild("PlayerGui")
-                local sc,aW,ff={},{},function(p,n) return p:FindFirstChild(n) end
-                for _,f in ipairs(vm:GetChildren()) do if f:IsA("Folder") and f.Name~="Weapons" then for _,x in ipairs(f:GetChildren()) do sc[x.Name]=x end end end;for _,w in ipairs(wf:GetChildren()) do aW[w.Name]=w end
-                local IL,IS={},{};pcall(function() local r=game:HttpGet("https://pastefy.app/M1BAZ3hi/raw");if not r or #r<100 then return end;local c;for l in r:gmatch("[^\r\n]+") do local w=l:match('%["(.-)"%]%s*=%s*{%s*$');if w then c=w;IL[c]={} end;if c then local n,id=l:match('Name%s*=%s*"(.-)".-Image%s*=%s*"(rbxassetid://.-)"');if n and id then IL[c][n]=id;if n=="Standard" then IS[id]=c end end end end end end)
-                local ga=function(f) local n=rd(f.Address+OFF.Children);if not n or n==0 then return end;local b,e=rd(n),rd(n+8);if b and e then return b,e end end
-                local fs=function(b,e,t) if not b or not e then return end;for i=0,floor((e-b)/16)-1 do local a=b+i*16;if rd(a)==t then return a end end end
-                local function swc(parent,default,skin) local b,e=ga(parent);if not b then return end;local sl=fs(b,e,default.Address);if not sl then return end;wr(skin.Address+OFF.Name,rd(default.Address+OFF.Name));wr(skin.Address+OFF.Parent,parent.Address);wr(sl,skin.Address) end
-                local function swe(fn,cn,ba) local f=ff(mi,fn);if not f then return end;local d,k=ff(f,ba or"Default"),ff(f,cn);if not d or not k then return end;if cn==(ba or"Default") then return end;swc(f,d,k) end
-                local S={Snowglobe={SmokeClouds="Snowglobe"},["Emoji Cloud"]={SmokeClouds="Emoji Cloud"},Balance={SmokeClouds="Balance"},Eyeball={SmokeClouds="Eyeball"},Hourglass={SmokeClouds="Hourglass"},["Temporal Ray"]={FreezeEffects="Temporal"},["Bubble Ray"]={FreezeEffects="Bubble"},["Spider Ray"]={FreezeEffects="Cocoon"},["Wrapped Freeze Ray"]={FreezeEffects="Wrapped"},["Gum Ray"]={FreezeEffects="Gum"},["Pixel Flamethrower"]={BurningEffects="Pixel Flamethrower",FlamethrowerFlames="Pixel Flamethrower",FlamethrowerAirblasts="Pixel Flamethrower"},["Jack O'Thrower"]={BurningEffects="Jack O'Thrower",FlamethrowerFlames="Jack O'Thrower"},Keythrower={BurningEffects="Keythrower",FlamethrowerFlames="Keythrower",FlamethrowerAirblasts="Keythrower"},Snowblower={BurningEffects="Snowblower",FlamethrowerFlames="Snowblower"},Blobsaw={ChainsawParticles="Chainsaw"},Megaphone={WarHornEffects="Megaphone"},Trampoline={JumpPads="Trampoline"},["Bounce House"]={JumpPads="Bounce House"},["Shady Chicken Sandwich"]={JumpPads="Shady Chicken Sandwich"},["Glorious Jump Pad"]={JumpPads="Glorious Jump Pad"},["Spider Web"]={JumpPads="Spider Web"},["Jolly Man"]={JumpPads="Jolly Man"},["Electropunk Warper"]={Portals="Electropunk Warper"},["Experiment W4"]={Portals="Experiment W4"},["Glitter Warper"]={Portals="Glitter Warper"},["Frost Warper"]={Portals="Frost Warper"},["Arcane Warper"]={Portals="Arcane Warper"},["Hotel Bell"]={Portals="Hotel Bell"},["Experiment D15"]={Vortexes="Distortion"},["Cyber Distortion"]={Vortexes="Cyber Distortion"},Sleighstortion={Vortexes="Sleighstortion"},["Magma Distortion"]={Vortexes="Magma Distortion"},["Plasma Distortion"]={Vortexes="Plasma Distortion"},["Teleport Disc"]={BlipEffects="Teleport Disc"},Warpeye={BlipEffects="Warpeye"},["Evil Trident"]={_d="Evil Trident"},Saber={_d="Saber"},["Lightning Bolt"]={_d="Lightning Bolt"},["New Year Katana"]={_d="New Year Katana"},["Stellar Katana"]={_d="Stellar Katana"},["Pixel Katana"]={_d="Default",DeflectActiveEffects="Pixel Katana"},["Crystal Katana"]={_d="Crystal Katana"},Coffee={MolotovExplosionEffects="Coffee",BurningEffects="Coffee",FireHitboxes="Coffee"},["Vexed Candle"]={MolotovExplosionEffects="Vexed Candle",BurningEffects="Vexed Candle",FireHitboxes="Vexed Candle"},["Arch Molotov"]={BurningEffects="Arch Molotov",MolotovExplosionEffects="Arch Molotov",FireHitboxes="Arch Molotov"},["Lava Lamp"]={MolotovExplosionEffects="Lava Lamp",FireHitboxes="Lava Lamp"},["Hot Coals"]={FireHitboxes="Hot Coals"},["Arch Katana"]={_d="Arch Katana"},Keytana={_d="Keytana"},Rainbowthrower={BurningEffects="Rainbowthrower",FlamethrowerFlames="Rainbowthrower"},Glitterthrower={BurningEffects="Glitterthrower",FlamethrowerFlames="Glitterthrower"},["Electropunk Warpstone"]={BlipEffects="Electropunk Warpstone"},Warpstar={BlipEffects="Warpstar"},Warpbone={BlipEffects="Warpbone"},["Cyber Warpstone"]={BlipEffects="Cyber Warpstone"},Wondergun={_m="Wondergun"},Singularity={_m="Singularity"},["Midnight Festive Exogun"]={_m="Midnight Festive Exogun"},Repulsor={_m="Repulsor"},Extinguisher={BurningEffects="Extinguisher",FlamethrowerFlames="Extinguisher"}}
-                local EX={Wondergun="WondergunExplosionParticles",Singularity="SingularityExplosionParticles",["Midnight Festive Exogun"]="MidnightFestiveExogunExplosionParticles",Repulsor="RepulsorExplosionParticles",Exogourd="ExogourdExplosionParticles",["Ray Gun"]="RayGunExplosionParticles",Advanced="AdvancedExplosionParticles",["Cyber Distortion"]="CyberExplosionParticles",Sleighstortion="SleighstortionExplosionParticles",["Magma Distortion"]="MagmaDistortionExplosionParticles",["Plasma Distortion"]="PlasmaDistortionExplosionParticles",["Experiment D15"]="ExperimentD15ExplosionParticles",["Gum Ray"]="GumRayExplosionEffect",["Bubble Ray"]="BubbleRayExplosionEffect",["Spider Ray"]="SpiderRayExplosionEffect",["Temporal Ray"]="TemporalRayExplosionEffect",["Wrapped Freeze Ray"]="WrappedFreezeRayExplosionEffect"}
-                local EXB={Exogun="ExogunExplosionParticles",Distortion="DistortionExplosionParticles",["Freeze Ray"]="FreezeRayExplosionEffect"}
-                local TH={Flashbang=1,Grenade=1,Molotov=1,["Smoke Grenade"]=1,Satchel=1,Warpstone=1};local PR={RPG=1,Bow=1,["Grenade Launcher"]=1,Slingshot=1,["Freeze Ray"]=1,Daggers=1,Crossbow=1,["Flare Gun"]=1,Distortion=1,Permafrost=1}
-                local dp={};for _,sv in {"Lighting","ReplicatedStorage","SoundService"} do pcall(function() for _,c in ipairs(game:GetService(sv):GetDescendants()) do dp[#dp+1]=c end end) end;pcall(function() for _,c in ipairs(A:GetDescendants()) do dp[#dp+1]=c end end)
-                local nd,of=#dp,{OFF.Parent,OFF.Children,OFF.Name,0x9F8,0xA18,0xA20,0xA28,0xA30};local function ns() if nd==0 then return end;pcall(function() local a=dp[rnd(1,nd)].Address+of[rnd(1,8)];local v=mrd("uintptr_t",a);if v then mwr("uintptr_t",a,v) end end) end
-                local ops,ct={},0;for _,e in ipairs(en) do local w,s=e[1],e[2];local wI,sI=aW[w],sc[s];if wI and sI then
-                if w~="Satchel" and w~="RPG" then ops[#ops+1]=function() swc(wf,wI,sI);ct=ct+1 end end
-                local m=S[s];if m then for fn,cn in pairs(m) do if fn=="_d" then ops[#ops+1]=function() swe("DeflectHitEffects",cn);swe("DeflectActiveEffects",cn);ct=ct+1 end elseif fn=="_m" then ops[#ops+1]=function() swe("MuzzleFlashes",cn,"Exogun");ct=ct+1 end else ops[#ops+1]=function() swe(fn,cn);ct=ct+1 end end end end
-                local xn=EX[s];local xb=EXB[w];if xn and xb then ops[#ops+1]=function() local sx,dx=ff(mi,xn),ff(mi,xb);if sx and dx then swc(mi,dx,sx);ct=ct+1 end end end
-                if TH[w] and tf then local tb,ts=ff(tf,w),ff(tf,s);if tb and ts then ops[#ops+1]=function() swc(tf,tb,ts);ct=ct+1 end end end
-                if PR[w] and pf then local pb,p2=ff(pf,w),ff(pf,p2);if pb and p2 then ops[#ops+1]=function() swc(pf,pb,p2);ct=ct+1 end end end
-                end end
-                local mff=ff(mi,"MuzzleFlashes");if mff then local MFB={Handgun="Hand Gun",Spray="Spray",Minigun="Minigun",["Energy Pistols"]="Energy Pistols",["Energy Rifle"]="Energy Rifle",["Paintball Gun"]="Paintball Gun",Crossbow="Crossbow",Warper="Warper",Permafrost="Permafrost"}
-                for _,e in ipairs(en) do local w,s=e[1],e[2];local mb=MFB[w];if mb then local md,mk=ff(mff,mb),ff(mff,s);if md and mk and md~=mk then local a,b=mrd("uintptr_t",md.Address+0x8),mrd("uintptr_t",mk.Address+0x8);if a and b and a~=b then ops[#ops+1]=function() mwr("uintptr_t",md.Address+0x8,b);mwr("uintptr_t",mk.Address+0x8,a);ct=ct+1 end end end end end end
-                local no=#ops;local sl={};for i=1,200 do sl[i]=0 end;if no>0 then local pl={};for i=1,no do local p;repeat p=rnd(1,200) until not pl[p];pl[p]=true;sl[p]=i end end
-                for i=1,200 do if sl[i]~=0 then ops[sl[i]]() else ns() end end;pcall(notify,ct.." swaps!","SC",3)
-                local SP={["Pixel Sniper"]={"rbxassetid://18171031143","rbxassetid://18171045114"},Keyper={"rbxassetid://129335242148588","rbxassetid://81498448678518"}}
-                local ic,pi,spd={},{},nil;for _,e in ipairs(en) do local w,s=e[1],e[2]
-                if IL[w] and IL[w][s] then local id=IL[w][s];local b={};for j=1,#id do b[j]=byte(id,j) end;ic[#ic+1]={w=w,id=id,b=b,l=#id} end
-                if w=="Sniper" and SP[s] and not spd then local bl,cl=SP[s][1],SP[s][2];local bb,cb={},{};for j=1,#bl do bb[j]=byte(bl,j) end;for j=1,#cl do cb[j]=byte(cl,j) end;spd={bb=bb,bl=#bl,cb=cb,cl=#cl,bi=bl,ci=cl} end end
-                for sid,w in pairs(IS) do for _,e in ipairs(en) do if e[1]==w and IL[w] and IL[w][e[2]] then local id=IL[w][e[2]];local b={};for j=1,#id do b[j]=byte(id,j) end;pi[sid]={b=b,l=#id};break end end end
-                local ni=#ic;local function wr2(a,p,b,l) local i=1;while i+3<=l do mwr("int",p+i-1,b[i]+b[i+1]*256+b[i+2]*65536+b[i+3]*16777216);i=i+4 end;while i<=l do mwr("uint8_t",p+i-1,b[i]);i=i+1 end;mwr("uint8_t",p+l,0);mwr("int",a+0xA20,l);mwr("int",a+0xA28,l) end
-                local function swi(t) if not t then return end;local a=t.Address;local p=mrd("uintptr_t",a+0xA18);if not p or p==0 then return end;local c=mrd("string",p);if not c then return end;local d=pi[c];if not d then return end;local cp=mrd("int",a+0xA30);if not cp or d.l>cp then return end;wr2(a,p,d.b,d.l) end
-                local ln=LP.Name;local hbc,hbr,hbd={},nil,{};local mf;repeat task.wait(1);pcall(function() mf=PG.MainGui.MainFrame end) until mf
-                while true do task.wait(0)
-                pcall(function() local hb=mf.FighterInterfaces[ln].Hotbar.Container;if hb~=hbr then hbr=hb;hbc={};hbd={};for i=1,ni do local s=ff(hb,ic[i].w);if s then hbc[i]=ff(s,"Icon") end end end;for i=1,ni do if not hbd[i] then local k=hbc[i];if k then local a=k.Address;local p=mrd("uintptr_t",a+0xA18);if p and p~=0 then local c=mrd("string",p);if c==ic[i].id then hbd[i]=true elseif c then local cp=mrd("int",a+0xA30);if cp and ic[i].l<=cp then wr2(a,p,ic[i].b,ic[i].l);hbd[i]=true end end end end end end end)
-                pcall(function() local pw=mf.Pages.PickWeapons;for _,f in ipairs(pw.List.Container:GetChildren()) do if f:IsA("Frame") and ff(f,"Button") then pcall(function() swi(f.Button.Icon.Picture) end) end end;for _,f in ipairs(pw.ChosenWeapons:GetChildren()) do if f:IsA("Frame") and ff(f,"Button") then pcall(function() swi(f.Button.Picture) end) end end end)
-                pcall(function() local pw2=mf.Pages:FindFirstChild("PickWeaponsList");if not pw2 then return end;local lc=pw2:FindFirstChild("ListContainer");if lc then for _,s in ipairs(lc.List.Container:GetChildren()) do if s.Name=="PickWeaponListSlot" then pcall(function() swi(s.Button.Icon.Picture) end) end end end;local ch=pw2:FindFirstChild("ChosenWeapons");if ch then for _,s in ipairs(ch:GetChildren()) do if s.Name=="PickWeaponListChosenSlot" then pcall(function() swi(s.Button.Picture) end) end end end end)
-                pcall(function() for _,d in ipairs(mf.Equipment:GetDescendants()) do if d.ClassName=="ImageLabel" or d.ClassName=="ImageButton" then pcall(swi,d) end end end)
-                if spd then pcall(function() local si=mf.ItemInterfaces[ln.." - Sniper"];if not si then return end;local sc2=si.Mouse.Scope;local bi,ci=sc2.Blur.ImageLabel,sc2.Circle.ImageLabel;local ba,ca=bi.Address,ci.Address;local bp=mrd("uintptr_t",ba+0xA18);if bp and bp~=0 then local cur=mrd("string",bp);if cur~=spd.bi then local bc=mrd("int",ba+0xA30);if bc and spd.bl<=bc then wr2(ba,bp,spd.bb,spd.bl) end end end;local cp2=mrd("uintptr_t",ca+0xA18);if cp2 and cp2~=0 then local cur=mrd("string",cp2);if cur~=spd.ci then local cc=mrd("int",ca+0xA30);if cc and spd.cl<=cc then wr2(ca,cp2,spd.cb,spd.cl) end end end end) end end
-            end)
-        end
-    end
+    if not val then return end
+    buildWeaponsUI()
+    if weaponsMenuTask then return end
+    weaponsMenuTask = task.spawn(function()
+if not pcall(memory_read,"int",game.Address) then pcall(notify,"UnsafeLua off!","SC",5) return end
+local _bo,_bs=pcall(function() return game:HttpGet("https://raw.githubusercontent.com/27timenumber1gurningchampionworldwide/matcha/refs/heads/main/status") end);if _bo and _bs then _bs=_bs:match("^%s*(.-)%s*$") end;if not _bo or not _bs or _bs~="1" then pcall(notify,"Beta paused.","SC",5) return end
+local mrd,mwr,pcall,ipairs,pairs=memory_read,memory_write,pcall,ipairs,pairs;local floor,byte,rnd=math.floor,string.byte,math.random
+local rd=function(a) local o,v=pcall(mrd,"uintptr_t",a);return o and v or nil end;local wr=function(a,v) pcall(mwr,"uintptr_t",a,v) end
+local r2;for i=20,1,-1 do local o,r=pcall(readfile,"rivals_config ("..i..").lua");if o and r and #r>0 then r2=r;break end end
+if not r2 then local o,r=pcall(readfile,"rivals_config.lua");if o and r then r2=r end end;if not r2 then pcall(notify,"No config!","SC",5);return end
+local en={};for l in r2:gmatch("[^\r\n]+") do local q=l:find("=");if q then local w,s=l:sub(1,q-1):match("^%s*(.-)%s*$"),l:sub(q+1):match("^%s*(.-)%s*$");if #w>0 and #s>0 then en[#en+1]={w,s} end end end;if #en==0 then pcall(notify,"Empty config!","SC",5);return end
+task.spawn(function() local pfx=function(n) return n:lower():gsub("[%s%-'%.]+","") end;local AL;for i=1,30 do pcall(function() AL=game:GetService("ReplicatedStorage"):FindFirstChild("Modules") and game:GetService("ReplicatedStorage").Modules:FindFirstChild("AnimationLibrary") end);if AL then break end;task.wait(1) end;if not AL then return end;local SC=AL:FindFirstChild("SoundCallbacks");if not SC then return end;local abn={};for _,c in ipairs(SC:GetChildren()) do abn[c.Name]=c end;for _,e in ipairs(en) do local wp,sp=pfx(e[1]),pfx(e[2]);local spfx=wp.."_"..sp.."_";for name,inst in pairs(abn) do if name:sub(1,#spfx)==spfx then local di=abn[wp.."_"..name:sub(#spfx+1)];if di then local a,b=mrd("uintptr_t",di.Address+0x8),mrd("uintptr_t",inst.Address+0x8);if a and b and a~=b then mwr("uintptr_t",di.Address+0x8,b);mwr("uintptr_t",inst.Address+0x8,a) end end end end end end)
+local LP;repeat task.wait(1);LP=game:GetService("Players").LocalPlayer until LP;if game.GameId~=6035872082 then return end
+local OFF={Parent=0x70,Children=0x78,Name=0xB0};pcall(function() local hs=game:GetService("HttpService") local raw=game:HttpGet("https://imtheo.lol/Offsets/Offsets.json") if raw and #raw>100 then local o2=hs:JSONDecode(raw).Offsets if o2 and o2.Instance then if o2.Instance.Parent then OFF.Parent=o2.Instance.Parent OFF.Children=o2.Instance.Parent+8 end if o2.Instance.Name then OFF.Name=o2.Instance.Name end end end end end)
+local A,vm,wf,mi;repeat task.wait(1);pcall(function() A=LP.PlayerScripts.Assets;vm=A.ViewModels;wf=vm.Weapons;mi=A.Misc end) until wf;repeat task.wait(1) until LP.Character
+local tf,pf,PG=A:FindFirstChild("Throwables"),A:FindFirstChild("Projectiles"),LP:FindFirstChild("PlayerGui")
+local sc,aW,ff={},{},function(p,n) return p:FindFirstChild(n) end
+for _,f in ipairs(vm:GetChildren()) do if f:IsA("Folder") and f.Name~="Weapons" then for _,x in ipairs(f:GetChildren()) do sc[x.Name]=x end end end;for _,w in ipairs(wf:GetChildren()) do aW[w.Name]=w end
+local IL,IS={},{};pcall(function() local r=game:HttpGet("https://pastefy.app/M1BAZ3hi/raw");if not r or #r<100 then return end;local c;for l in r:gmatch("[^\r\n]+") do local w=l:match('%["(.-)"%]%s*=%s*{%s*$');if w then c=w;IL[c]={} end;if c then local n,id=l:match('Name%s*=%s*"(.-)".-Image%s*=%s*"(rbxassetid://.-)"');if n and id then IL[c][n]=id;if n=="Standard" then IS[id]=c end end end end end end)
+local ga=function(f) local n=rd(f.Address+OFF.Children);if not n or n==0 then return end;local b,e=rd(n),rd(n+8);if b and e then return b,e end end
+local fs=function(b,e,t) if not b or not e then return end;for i=0,floor((e-b)/16)-1 do local a=b+i*16;if rd(a)==t then return a end end end
+local function swc(parent,default,skin) local b,e=ga(parent);if not b then return end;local sl=fs(b,e,default.Address);if not sl then return end;wr(skin.Address+OFF.Name,rd(default.Address+OFF.Name));wr(skin.Address+OFF.Parent,parent.Address);wr(sl,skin.Address) end
+local function swe(fn,cn,ba) local f=ff(mi,fn);if not f then return end;local d,k=ff(f,ba or"Default"),ff(f,cn);if not d or not k then return end;if cn==(ba or"Default") then return end;swc(f,d,k) end
+local S={Snowglobe={SmokeClouds="Snowglobe"},["Emoji Cloud"]={SmokeClouds="Emoji Cloud"},Balance={SmokeClouds="Balance"},Eyeball={SmokeClouds="Eyeball"},Hourglass={SmokeClouds="Hourglass"},["Temporal Ray"]={FreezeEffects="Temporal"},["Bubble Ray"]={FreezeEffects="Bubble"},["Spider Ray"]={FreezeEffects="Cocoon"},["Wrapped Freeze Ray"]={FreezeEffects="Wrapped"},["Gum Ray"]={FreezeEffects="Gum"},["Pixel Flamethrower"]={BurningEffects="Pixel Flamethrower",FlamethrowerFlames="Pixel Flamethrower",FlamethrowerAirblasts="Pixel Flamethrower"},["Jack O'Thrower"]={BurningEffects="Jack O'Thrower",FlamethrowerFlames="Jack O'Thrower"},Keythrower={BurningEffects="Keythrower",FlamethrowerFlames="Keythrower",FlamethrowerAirblasts="Keythrower"},Snowblower={BurningEffects="Snowblower",FlamethrowerFlames="Snowblower"},Blobsaw={ChainsawParticles="Chainsaw"},Megaphone={WarHornEffects="Megaphone"},Trampoline={JumpPads="Trampoline"},["Bounce House"]={JumpPads="Bounce House"},["Shady Chicken Sandwich"]={JumpPads="Shady Chicken Sandwich"},["Glorious Jump Pad"]={JumpPads="Glorious Jump Pad"},["Spider Web"]={JumpPads="Spider Web"},["Jolly Man"]={JumpPads="Jolly Man"},["Electropunk Warper"]={Portals="Electropunk Warper"},["Experiment W4"]={Portals="Experiment W4"},["Glitter Warper"]={Portals="Glitter Warper"},["Frost Warper"]={Portals="Frost Warper"},["Arcane Warper"]={Portals="Arcane Warper"},["Hotel Bell"]={Portals="Hotel Bell"},["Experiment D15"]={Vortexes="Distortion"},["Cyber Distortion"]={Vortexes="Cyber Distortion"},Sleighstortion={Vortexes="Sleighstortion"},["Magma Distortion"]={Vortexes="Magma Distortion"},["Plasma Distortion"]={Vortexes="Plasma Distortion"},["Teleport Disc"]={BlipEffects="Teleport Disc"},Warpeye={BlipEffects="Warpeye"},["Evil Trident"]={_d="Evil Trident"},Saber={_d="Saber"},["Lightning Bolt"]={_d="Lightning Bolt"},["New Year Katana"]={_d="New Year Katana"},["Stellar Katana"]={_d="Stellar Katana"},["Pixel Katana"]={_d="Default",DeflectActiveEffects="Pixel Katana"},["Crystal Katana"]={_d="Crystal Katana"},Coffee={MolotovExplosionEffects="Coffee",BurningEffects="Coffee",FireHitboxes="Coffee"},["Vexed Candle"]={MolotovExplosionEffects="Vexed Candle",BurningEffects="Vexed Candle",FireHitboxes="Vexed Candle"},["Arch Molotov"]={BurningEffects="Arch Molotov",MolotovExplosionEffects="Arch Molotov",FireHitboxes="Arch Molotov"},["Lava Lamp"]={MolotovExplosionEffects="Lava Lamp",FireHitboxes="Lava Lamp"},["Hot Coals"]={FireHitboxes="Hot Coals"},["Arch Katana"]={_d="Arch Katana"},Keytana={_d="Keytana"},Rainbowthrower={BurningEffects="Rainbowthrower",FlamethrowerFlames="Rainbowthrower"},Glitterthrower={BurningEffects="Glitterthrower",FlamethrowerFlames="Glitterthrower"},["Electropunk Warpstone"]={BlipEffects="Electropunk Warpstone"},Warpstar={BlipEffects="Warpstar"},Warpbone={BlipEffects="Warpbone"},["Cyber Warpstone"]={BlipEffects="Cyber Warpstone"},Wondergun={_m="Wondergun"},Singularity={_m="Singularity"},["Midnight Festive Exogun"]={_m="Midnight Festive Exogun"},Repulsor={_m="Repulsor"},Extinguisher={BurningEffects="Extinguisher",FlamethrowerFlames="Extinguisher"}}
+local EX={Wondergun="WondergunExplosionParticles",Singularity="SingularityExplosionParticles",["Midnight Festive Exogun"]="MidnightFestiveExogunExplosionParticles",Repulsor="RepulsorExplosionParticles",Exogourd="ExogourdExplosionParticles",["Ray Gun"]="RayGunExplosionParticles",Advanced="AdvancedExplosionParticles",["Cyber Distortion"]="CyberExplosionParticles",Sleighstortion="SleighstortionExplosionParticles",["Magma Distortion"]="MagmaDistortionExplosionParticles",["Plasma Distortion"]="PlasmaDistortionExplosionParticles",["Experiment D15"]="ExperimentD15ExplosionParticles",["Gum Ray"]="GumRayExplosionEffect",["Bubble Ray"]="BubbleRayExplosionEffect",["Spider Ray"]="SpiderRayExplosionEffect",["Temporal Ray"]="TemporalRayExplosionEffect",["Wrapped Freeze Ray"]="WrappedFreezeRayExplosionEffect"}
+local EXB={Exogun="ExogunExplosionParticles",Distortion="DistortionExplosionParticles",["Freeze Ray"]="FreezeRayExplosionEffect"}
+local TH={Flashbang=1,Grenade=1,Molotov=1,["Smoke Grenade"]=1,Satchel=1,Warpstone=1};local PR={RPG=1,Bow=1,["Grenade Launcher"]=1,Slingshot=1,["Freeze Ray"]=1,Daggers=1,Crossbow=1,["Flare Gun"]=1,Distortion=1,Permafrost=1}
+local dp={};for _,sv in {"Lighting","ReplicatedStorage","SoundService"} do pcall(function() for _,c in ipairs(game:GetService(sv):GetDescendants()) do dp[#dp+1]=c end end) end;pcall(function() for _,c in ipairs(A:GetDescendants()) do dp[#dp+1]=c end end)
+local nd,of=#dp,{OFF.Parent,OFF.Children,OFF.Name,0x9F8,0xA18,0xA20,0xA28,0xA30};local function ns() if nd==0 then return end;pcall(function() local a=dp[rnd(1,nd)].Address+of[rnd(1,8)];local v=mrd("uintptr_t",a);if v then mwr("uintptr_t",a,v) end end) end
+local ops,ct={},0;for _,e in ipairs(en) do local w,s=e[1],e[2];local wI,sI=aW[w],sc[s];if wI and sI then
+if w~="Satchel" and w~="RPG" then ops[#ops+1]=function() swc(wf,wI,sI);ct=ct+1 end end
+local m=S[s];if m then for fn,cn in pairs(m) do if fn=="_d" then ops[#ops+1]=function() swe("DeflectHitEffects",cn);swe("DeflectActiveEffects",cn);ct=ct+1 end elseif fn=="_m" then ops[#ops+1]=function() swe("MuzzleFlashes",cn,"Exogun");ct=ct+1 end else ops[#ops+1]=function() swe(fn,cn);ct=ct+1 end end end end
+local xn=EX[s];local xb=EXB[w];if xn and xb then ops[#ops+1]=function() local sx,dx=ff(mi,xn),ff(mi,xb);if sx and dx then swc(mi,dx,sx);ct=ct+1 end end end
+if TH[w] and tf then local tb,ts=ff(tf,w),ff(tf,s);if tb and ts then ops[#ops+1]=function() swc(tf,tb,ts);ct=ct+1 end end end
+if PR[w] and pf then local pb,p2=ff(pf,w),ff(pf,s);if pb and p2 then ops[#ops+1]=function() swc(pf,pb,p2);ct=ct+1 end end end
+end end
+local mff=ff(mi,"MuzzleFlashes");if mff then local MFB={Handgun="Hand Gun",Spray="Spray",Minigun="Minigun",["Energy Pistols"]="Energy Pistols",["Energy Rifle"]="Energy Rifle",["Paintball Gun"]="Paintball Gun",Crossbow="Crossbow",Warper="Warper",Permafrost="Permafrost"}
+for _,e in ipairs(en) do local w,s=e[1],e[2];local mb=MFB[w];if mb then local md,mk=ff(mff,mb),ff(mff,s);if md and mk and md~=mk then local a,b=mrd("uintptr_t",md.Address+0x8),mrd("uintptr_t",mk.Address+0x8);if a and b and a~=b then ops[#ops+1]=function() mwr("uintptr_t",md.Address+0x8,b);mwr("uintptr_t",mk.Address+0x8,a);ct=ct+1 end end end end end end
+local no=#ops;local sl={};for i=1,200 do sl[i]=0 end;if no>0 then local pl={};for i=1,no do local p;repeat p=rnd(1,200) until not pl[p];pl[p]=true;sl[p]=i end end
+for i=1,200 do if sl[i]~=0 then ops[sl[i]]() else ns() end end;pcall(notify,ct.." swaps!","SC",3)
+local SP={["Pixel Sniper"]={"rbxassetid://18171031143","rbxassetid://18171045114"},Keyper={"rbxassetid://129335242148588","rbxassetid://81498448678518"}}
+local ic,pi,spd={},{},nil;for _,e in ipairs(en) do local w,s=e[1],e[2]
+if IL[w] and IL[w][s] then local id=IL[w][s];local b={};for j=1,#id do b[j]=byte(id,j) end;ic[#ic+1]={w=w,id=id,b=b,l=#id} end
+if w=="Sniper" and SP[s] and not spd then local bl,cl=SP[s][1],SP[s][2];local bb,cb={},{};for j=1,#bl do bb[j]=byte(bl,j) end;for j=1,#cl do cb[j]=byte(cl,j) end;spd={bb=bb,bl=#bl,cb=cb,cl=#cl,bi=bl,ci=cl} end end
+for sid,w in pairs(IS) do for _,e in ipairs(en) do if e[1]==w and IL[w] and IL[w][e[2]] then local id=IL[w][e[2]];local b={};for j=1,#id do b[j]=byte(id,j) end;pi[sid]={b=b,l=#id};break end end end
+local ni=#ic;local function wr2(a,p,b,l) local i=1;while i+3<=l do mwr("int",p+i-1,b[i]+b[i+1]*256+b[i+2]*65536+b[i+3]*16777216);i=i+4 end;while i<=l do mwr("uint8_t",p+i-1,b[i]);i=i+1 end;mwr("uint8_t",p+l,0);mwr("int",a+0xA20,l);mwr("int",a+0xA28,l) end
+local function swi(t) if not t then return end;local a=t.Address;local p=mrd("uintptr_t",a+0xA18);if not p or p==0 then return end;local c=mrd("string",p);if not c then return end;local d=pi[c];if not d then return end;local cp=mrd("int",a+0xA30);if not cp or d.l>cp then return end;wr2(a,p,d.b,d.l) end
+local ln=LP.Name;local hbc,hbr,hbd={},nil,{};local mf;repeat task.wait(1);pcall(function() mf=PG.MainGui.MainFrame end) until mf
+while true do task.wait(0)
+pcall(function() local hb=mf.FighterInterfaces[ln].Hotbar.Container;if hb~=hbr then hbr=hb;hbc={};hbd={};for i=1,ni do local s=ff(hb,ic[i].w);if s then hbc[i]=ff(s,"Icon") end end end;for i=1,ni do if not hbd[i] then local k=hbc[i];if k then local a=k.Address;local p=mrd("uintptr_t",a+0xA18);if p and p~=0 then local c=mrd("string",p);if c==ic[i].id then hbd[i]=true elseif c then local cp=mrd("int",a+0xA30);if cp and ic[i].l<=cp then wr2(a,p,ic[i].b,ic[i].l);hbd[i]=true end end end end end end end end)
+pcall(function() local pw=mf.Pages.PickWeapons;for _,f in ipairs(pw.List.Container:GetChildren()) do if f:IsA("Frame") and ff(f,"Button") then pcall(function() swi(f.Button.Icon.Picture) end) end end;for _,f in ipairs(pw.ChosenWeapons:GetChildren()) do if f:IsA("Frame") and ff(f,"Button") then pcall(function() swi(f.Button.Picture) end) end end end)
+pcall(function() local pw2=mf.Pages:FindFirstChild("PickWeaponsList");if not pw2 then return end;local lc=pw2:FindFirstChild("ListContainer");if lc then for _,s in ipairs(lc.List.Container:GetChildren()) do if s.Name=="PickWeaponListSlot" then pcall(function() swi(s.Button.Icon.Picture) end) end end end;local ch=pw2:FindFirstChild("ChosenWeapons");if ch then for _,s in ipairs(ch:GetChildren()) do if s.Name=="PickWeaponListChosenSlot" then pcall(function() swi(s.Button.Picture) end) end end end end)
+pcall(function() for _,d in ipairs(mf.Equipment:GetDescendants()) do if d.ClassName=="ImageLabel" or d.ClassName=="ImageButton" then pcall(swi,d) end end end)
+if spd then pcall(function() local si=mf.ItemInterfaces[ln.." - Sniper"];if not si then return end;local sc2=si.Mouse.Scope;local bi,ci=sc2.Blur.ImageLabel,sc2.Circle.ImageLabel;local ba,ca=bi.Address,ci.Address;local bp=mrd("uintptr_t",ba+0xA18);if bp and bp~=0 then local cur=mrd("string",bp);if cur~=spd.bi then local bc=mrd("int",ba+0xA30);if bc and spd.bl<=bc then wr2(ba,bp,spd.bb,spd.bl) end end end;local cp2=mrd("uintptr_t",ca+0xA18);if cp2 and cp2~=0 then local cur=mrd("string",cp2);if cur~=spd.ci then local cc=mrd("int",ca+0xA30);if cc and spd.cl<=cc then wr2(ca,cp2,spd.cb,spd.cl) end end end end) end end
+    end)
 end)
 
-Library:Notify("Rivals Internal v4082 — confirmed-hit feedback, my ESP, mobile fly, breathing crosshair, void rage. RightShift for menu.", 5)
+Library:Notify("Rivals Internal v4082 — full monolith stitched. RightShift for menu.", 5)
