@@ -226,7 +226,7 @@ end
 
 getgenv().Config = {
     Enabled = false,
-    AimEnabled = false, AimbotEnabled = false, TeamCheck = false, ShowFOV = false, FOVRadius = 150, AimSpeed = 100, HitPart = "Head",
+    AimEnabled = false, HitChance = 100, AimbotEnabled = false, TeamCheck = false, ShowFOV = false, FOVRadius = 150, AimSpeed = 100, HitPart = "Head",
     FOVColor1 = Color3.new(1,1,1), FOVColor2 = Color3.fromRGB(80, 170, 255), FOVSpinSpeed = 1,
     SilentFollow = "Follow Target",
     AimSens = 100,
@@ -261,6 +261,7 @@ getgenv().Config = {
     RageHideVoid = 50, VoidType = "Hybrid",
     RageMiscAutoSwap = false, RageMiscProjectiles = false,
     SkinChanger = false,
+    AutoLoadConfig = false,
 }
 
 -- // 4. Linoria UI Setup
@@ -297,6 +298,7 @@ local Tabs = {
 
 local AimGroup = Tabs.Main:AddLeftGroupbox("Silent Aim")
 AimGroup:AddToggle("AimEnabled", { Text = "Enable Silent Aim", Default = false, Tooltip = "Lucent-style: camera snaps inside Gun.StartShooting for one tick, bullet flies true, screen never moves." })
+AimGroup:AddSlider("HitChance", { Text = "Hit Chance", Min = 0, Max = 100, Default = 100, Suffix = "%", Rounding = 0, Tooltip = "Dice roll per shot. Below 100 = some shots fire clean with no redirect." })
 AimGroup:AddToggle("TeamCheck", { Text = "Team Check", Default = false })
 AimGroup:AddToggle("ShowFOV", { Text = "Show FOV Circle", Default = false }):AddColorPicker("FOVColor1", { Default = Color3.new(1,1,1) }):AddColorPicker("FOVColor2", { Default = Color3.fromRGB(80, 170, 255) })
 AimGroup:AddSlider("FOVRadius", { Text = "FOV Radius", Min = 50, Max = 800, Default = 150, Suffix = "px", Rounding = 0 })
@@ -311,7 +313,7 @@ AimGroup:AddDropdown("SilentFollow", {
 })
 
 local AimbotGroup = Tabs.Main:AddLeftGroupbox("Aimbot")
-AimbotGroup:AddToggle("AimbotEnabled", { Text = "Enable Aimbot", Default = false, Tooltip = "Lion-style visible assist: mouse-sensitivity compensated angles, prediction, jump smoothing. Fully separate from Silent Aim." })
+AimbotGroup:AddToggle("AimbotEnabled", { Text = "Enable Aimbot", Default = false, Tooltip = "Lucent-style visible assist: mouse-sensitivity compensated angles, prediction, jump smoothing. Fully separate from Silent Aim." })
 AimbotGroup:AddSlider("AimSpeed", { Text = "Aimbot Speed", Min = 1, Max = 100, Default = 100, Suffix = "%", Rounding = 0 })
 AimbotGroup:AddSlider("AimSens", { Text = "Aim Smooth %", Min = 1, Max = 100, Default = 100, Suffix = "%", Rounding = 0 })
 AimbotGroup:AddSlider("Prediction", { Text = "Prediction", Min = 0, Max = 200, Default = 100, Suffix = "ms", Rounding = 0 })
@@ -675,6 +677,7 @@ local function PushTracer(fromPos, toPos)
     end
 end
 
+do
 -- // 5c. Target HUD gui (icons + gun name + damage-taken bar)
 local TargetHUDGui = Instance.new("ScreenGui")
 TargetHUDGui.Name = "AuroraTargetHUD"
@@ -1099,6 +1102,7 @@ RunService.RenderStepped:Connect(function(dt)
 
     getgenv().Config.Enabled = Toggles.RageEnabled.Value
     getgenv().Config.AimEnabled = Toggles.AimEnabled.Value
+    getgenv().Config.HitChance = Options.HitChance.Value
     getgenv().Config.AimbotEnabled = Toggles.AimbotEnabled.Value
     getgenv().Config.TeamCheck = Toggles.TeamCheck.Value
     getgenv().Config.ShowFOV = Toggles.ShowFOV.Value
@@ -1247,7 +1251,7 @@ RunService.RenderStepped:Connect(function(dt)
     end
     FOVCircleFrame.Visible = getgenv().Config.ShowFOV
 
-    -- Lion-style visible aimbot: sens-compensated angles, prediction, jump smoothing. Fully独立 of silent aim.
+    -- Lion-style visible aimbot: sens-compensated angles, prediction, jump smoothing. Fully separate from silent aim.
     if getgenv().Config.AimbotEnabled then
         local abCenter = (getgenv().Config.SilentFollow == "Follow Gun Tip") and SmoothGunTipScreen or nil
         local abTarget = phem9(abCenter)
@@ -1368,7 +1372,7 @@ RunService:BindToRenderStep("RivalsStretch", Enum.RenderPriority.Camera.Value + 
     cam.CFrame = result
 end)
 
--- // 9. Silent Aim (Lucent-style shot wrap + module raycast redirect)
+-- // 9. Silent Aim (Lucent-style shot wrap + module raycast redirect + hit chance)
 local phem2_cs = game:GetService("CollectionService")
 local phem7 = require(ReplicatedStorage.Modules.Utility)
 local phem8 = phem7.Raycast
@@ -1443,11 +1447,8 @@ local function InstallSilentShotWrap()
         local origStartShooting = Gun.StartShooting
         Gun.StartShooting = function(self, ...)
             if getgenv().Config.AimEnabled then
-                local rollOK = math.random(1, 100) <= 100
+                local rollOK = math.random(1, 100) <= (getgenv().Config.HitChance or 100)
                 local gateOK = true
-                if gateOK then
-                    rollOK = rollOK
-                end
                 SilentRollOK = rollOK and gateOK
             else
                 SilentRollOK = true
@@ -3187,4 +3188,219 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-Library:Notify("Rivals Internal v4093 — clean split, rich target hud, no ADS, no emotes, no knife styles. RightShift for menu.", 5)
+-- // 18. PC Keybinds (Always / Hold / None) — mobile untouched
+local KeybindGroup = Tabs.Misc:AddRightGroupbox("Keybinds (PC only)")
+
+local BIND_FUNCTIONS = {
+    { Name = "Silent Aim", Toggle = "AimEnabled" },
+    { Name = "Aimbot", Toggle = "AimbotEnabled" },
+    { Name = "Ragebot", Toggle = "RageEnabled" },
+    { Name = "ESP", Toggle = "ESPEnabled" },
+    { Name = "Fly", Toggle = "Fly" },
+    { Name = "Target HUD", Toggle = "TargetHUD" },
+}
+local KEYBIND_FILE = "RivalsInternal/keybinds.json"
+local KeybindState = {}
+local BindButtons = {}
+local BindingFor = nil
+
+local function InputToName(inp)
+    if inp.UserInputType == Enum.UserInputType.Keyboard then
+        return "KeyCode." .. inp.KeyCode.Name
+    elseif inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.MouseButton2
+        or inp.UserInputType == Enum.UserInputType.MouseButton3 then
+        return "UserInputType." .. inp.UserInputType.Name
+    end
+    return nil
+end
+
+local function ShortKeyName(full)
+    if not full or full == "None" then return "None" end
+    local n = full:match("^KeyCode%.(.+)$") or full:match("^UserInputType%.(.+)$")
+    return n or full
+end
+
+local function SaveKeybinds()
+    pcall(function()
+        if not writefile then return end
+        local data = {}
+        for name, st in pairs(KeybindState) do
+            data[name] = { Key = st.Key, Mode = st.Mode }
+        end
+        writefile(KEYBIND_FILE, HttpService:JSONEncode(data))
+    end)
+end
+
+local function LoadKeybinds()
+    pcall(function()
+        if not readfile or not isfile then return end
+        if not isfile(KEYBIND_FILE) then return end
+        local data = HttpService:JSONDecode(readfile(KEYBIND_FILE))
+        if type(data) == "table" then
+            for name, entry in pairs(data) do
+                if KeybindState[name] and type(entry) == "table" then
+                    KeybindState[name].Key = entry.Key or "None"
+                    KeybindState[name].Mode = entry.Mode or "None"
+                end
+            end
+        end
+    end)
+end
+
+local function GetBindToggle(funcName)
+    for _, f in ipairs(BIND_FUNCTIONS) do
+        if f.Name == funcName then
+            return Toggles[f.Toggle]
+        end
+    end
+    return nil
+end
+
+local function ApplyBindState(funcName, down)
+    local st = KeybindState[funcName]
+    if not st or st.Mode == "None" or st.Key == "None" then return end
+    local tgl = GetBindToggle(funcName)
+    if not tgl then return end
+    if st.Mode == "Always" then
+        if down then
+            tgl:SetValue(not tgl.Value)
+        end
+    elseif st.Mode == "Hold" then
+        tgl:SetValue(down and true or false)
+    end
+end
+
+for _, f in ipairs(BIND_FUNCTIONS) do
+    KeybindState[f.Name] = { Key = "None", Mode = "None" }
+end
+LoadKeybinds()
+
+for _, f in ipairs(BIND_FUNCTIONS) do
+    local label = f.Name .. ": " .. ShortKeyName(KeybindState[f.Name].Key)
+    local btn
+    btn = KeybindGroup:AddButton(label, function()
+        if UserInputService.TouchEnabled then
+            Library:Notify("Keybinds are PC only.", 2)
+            return
+        end
+        BindingFor = f.Name
+        pcall(function() btn:SetText(f.Name .. ": press a key... (Esc = none)") end)
+    end)
+    BindButtons[f.Name] = btn
+    KeybindGroup:AddDropdown("BindMode_" .. f.Name, {
+        Values = {"Always", "Hold", "None"},
+        Default = KeybindState[f.Name].Mode,
+        Multi = false,
+        Text = f.Name .. " mode",
+        Callback = function(val)
+            local st = KeybindState[f.Name]
+            if not st then return end
+            if st.Mode == "Hold" and val ~= "Hold" then
+                local tgl = GetBindToggle(f.Name)
+                if tgl and tgl.Value then tgl:SetValue(false) end
+            end
+            st.Mode = val
+            SaveKeybinds()
+        end,
+    })
+end
+
+UserInputService.InputBegan:Connect(function(inp, gameProcessed)
+    if BindingFor then
+        local name = "None"
+        if inp.KeyCode ~= Enum.KeyCode.Escape then
+            name = InputToName(inp) or "None"
+        end
+        local st = KeybindState[BindingFor]
+        if st then
+            st.Key = name
+            local b = BindButtons[BindingFor]
+            if b then
+                pcall(function() b:SetText(BindingFor .. ": " .. ShortKeyName(name)) end)
+            end
+            SaveKeybinds()
+        end
+        BindingFor = nil
+        return
+    end
+    if gameProcessed then return end
+    if UserInputService.TouchEnabled then return end
+    local keyName = InputToName(inp)
+    if not keyName then return end
+    for funcName, st in pairs(KeybindState) do
+        if st.Key == keyName then
+            ApplyBindState(funcName, true)
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(inp)
+    if UserInputService.TouchEnabled then return end
+    local keyName = InputToName(inp)
+    if not keyName then return end
+    for funcName, st in pairs(KeybindState) do
+        if st.Key == keyName then
+            ApplyBindState(funcName, false)
+        end
+    end
+end)
+
+-- // 19. Auto Load (settings)
+local AUTOLOAD_FLAG = "RivalsInternal/autoload_on.txt"
+local AUTOLOAD_NAME = "autoload"
+
+local AutoLoadGroup = Tabs["UI Settings"]:AddRightGroupbox("Auto Load")
+
+local function AutoloadFlagOnDisk()
+    local ok, exists = pcall(function()
+        return isfile and isfile(AUTOLOAD_FLAG) or false
+    end)
+    return ok and exists == true
+end
+
+local function SaveAutoloadConfig()
+    pcall(function() SaveManager:SaveConfig(AUTOLOAD_NAME, true) end)
+    pcall(function() SaveManager:SaveConfig(AUTOLOAD_NAME) end)
+end
+
+local function LoadAutoloadConfig()
+    local ok = pcall(function() SaveManager:LoadConfig(AUTOLOAD_NAME) end)
+    if not ok then
+        pcall(function() SaveManager:LoadAutoloadConfig() end)
+    end
+end
+
+AutoLoadGroup:AddToggle("AutoLoadConfig", {
+    Text = "Auto Load Config",
+    Default = AutoloadFlagOnDisk(),
+    Tooltip = "Saves your setup as 'autoload' and restores it every execution.",
+    Callback = function(val)
+        getgenv().Config.AutoLoadConfig = val == true
+        if val then
+            SaveAutoloadConfig()
+            pcall(function()
+                if writefile then writefile(AUTOLOAD_FLAG, "1") end
+            end)
+            Library:Notify("Auto load ON. Setup saved as 'autoload'.", 2)
+        else
+            pcall(function()
+                if delfile and isfile and isfile(AUTOLOAD_FLAG) then delfile(AUTOLOAD_FLAG) end
+            end)
+            Library:Notify("Auto load OFF.", 2)
+        end
+    end,
+})
+AutoLoadGroup:AddButton("Re-save autoload now", function()
+    SaveAutoloadConfig()
+    Library:Notify("Autoload config re-saved.", 2)
+end)
+
+-- // 20. Startup restore
+task.delay(1.5, function()
+    if AutoloadFlagOnDisk() then
+        LoadAutoloadConfig()
+    end
+end)
+
+Library:Notify("Rivals Internal v4095 — PC keybinds (always/hold/none) + auto load. RightShift for menu.", 5)
