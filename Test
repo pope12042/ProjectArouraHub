@@ -197,42 +197,42 @@ end
 -- // Custom Sound Downloader
 local SoundCache = {}
 local function fetchSound(key, url)
-    if SoundCache[key] then return SoundCache[key] end
-    local fname = key .. ".mp3"
-    local i = 1
-    local base = key
-    while isfile(fname) do
-        fname = base .. tostring(i) .. ".mp3"
-        i = i + 1
-    end
-    if not isfile(fname) then
-        pcall(function()
-            writefile(fname, game:HttpGet(url))
-        end)
-    end
-    local asset = getcustomasset(fname)
-    SoundCache[key] = asset
-    return asset
+if SoundCache[key] then return SoundCache[key] end
+local fname = key .. ".mp3"
+local i = 1
+local base = key
+while isfile(fname) do
+fname = base .. tostring(i) .. ".mp3"
+i = i + 1
+end
+if not isfile(fname) then
+pcall(function()
+writefile(fname, game:HttpGet(url))
+end)
+end
+local asset = getcustomasset(fname)
+SoundCache[key] = asset
+return asset
 end
 
 local CustomHitSounds = {
-    ["None"] = "",
-    ["Agpa"] = "rbxassetid://132463144859699",
-    ["Gamesense"] = "rbxassetid://4817809188",
-    ["Neverlose"] = "rbxassetid://139452805868562",
-    ["Bow Hit"] = "rbxassetid://135478009117226",
-    ["TF2"] = "rbxassetid://137392628136734",
-    ["Teto"] = "rbxassetid://137052121415213",
-    ["Ouch"] = fetchSound("Audio_ouch", "https://github.com/pope12042/ProjectAurora/raw/refs/heads/main/anime-ahh.mp3"),
-    ["Samsung"] = fetchSound("Audio_samsung", "https://github.com/pope12042/ProjectAurora/raw/refs/heads/main/yt1s_nijLeKo.mp3"),
+["None"] = "",
+["Agpa"] = "rbxassetid://132463144859699",
+["Gamesense"] = "rbxassetid://4817809188",
+["Neverlose"] = "rbxassetid://139452805868562",
+["Bow Hit"] = "rbxassetid://135478009117226",
+["TF2"] = "rbxassetid://137392628136734",
+["Teto"] = "rbxassetid://137052121415213",
+["Ouch"] = fetchSound("Audio_ouch", "https://github.com/pope12042/ProjectAurora/raw/refs/heads/main/anime-ahh.mp3"),
+["Samsung"] = fetchSound("Audio_samsung", "https://github.com/pope12042/ProjectAurora/raw/refs/heads/main/yt1s_nijLeKo.mp3"),
 }
 
 local CustomDeathSounds = {
-    ["None"] = "",
-    ["Sata Andagi"] = fetchSound("Audio_sata", "https://github.com/pope12042/ProjectAurora/raw/refs/heads/main/sata-andagi-made-with-Voicemod.mp3"),
-    ["Giggle"] = fetchSound("Audio_giggle", "https://github.com/pope12042/ProjectAurora/raw/refs/heads/main/giggle-cute-anime-girl-sound-effect.mp3"),
-    ["Stop It Pls"] = fetchSound("Audio_stop", "https://github.com/pope12042/ProjectAurora/raw/refs/heads/main/stop-please_9yqGTDW.mp3"),
-    ["Fatality"] = fetchSound("Audio_fatality", "https://github.com/pope12042/ProjectAurora/raw/refs/heads/main/16_2.mp3"),
+["None"] = "",
+["Sata Andagi"] = fetchSound("Audio_sata", "https://github.com/pope12042/ProjectAurora/raw/refs/heads/main/sata-andagi-made-with-Voicemod.mp3"),
+["Giggle"] = fetchSound("Audio_giggle", "https://github.com/pope12042/ProjectAurora/raw/refs/heads/main/giggle-cute-anime-girl-sound-effect.mp3"),
+["Stop It Pls"] = fetchSound("Audio_stop", "https://github.com/pope12042/ProjectAurora/raw/refs/heads/main/stop-please_9yqGTDW.mp3"),
+["Fatality"] = fetchSound("Audio_fatality", "https://github.com/pope12042/ProjectAurora/raw/refs/heads/main/16_2.mp3"),
 }
 
 -- // 3. Services & Global Config
@@ -365,7 +365,7 @@ ChamsGroup:AddToggle("ArmChams", { Text = "Arm Chams", Default = false })
 :AddColorPicker("ArmChamsFill", { Default = Color3.fromRGB(60, 180, 255), Title = "Arm Fill Color" })
 :AddColorPicker("ArmChamsOutline", { Default = Color3.new(0, 0, 0), Title = "Arm Outline Color" })
 ChamsGroup:AddSlider("ChamsFillTransparency", { Text = "Fill Transparency", Min = 0, Max = 1, Default = 0.45, Rounding = 2, Compact = true })
-ChamsGroup:AddToggle("ChamsWireframe", { Text = "Wireframe Mode", Default = false, Tooltip = "Drops part transparency to 0.75 and renders a solid white outline via Highlight." })
+ChamsGroup:AddToggle("ChamsWireframe", { Text = "Wireframe Mode", Default = false, Tooltip = "Drops part transparency to 0.75 and renders a thin white outline via Highlight." })
 local ExploitGroup = Tabs.Main:AddRightGroupbox("Exploits & Audio")
 ExploitGroup:AddToggle("RapidFire", { Text = "Rapid Fire", Default = false })
 ExploitGroup:AddSlider("RapidFireSpeed", { Text = "Cooldown Override", Min = -100, Max = 100, Default = -1, Rounding = 0 })
@@ -630,7 +630,6 @@ HitSound.Parent = gethui()
 local DeathSound = Instance.new("Sound")
 DeathSound.Volume = 0.5
 DeathSound.Parent = gethui()
-
 local DamageTextGui = Instance.new("ScreenGui")
 DamageTextGui.Name = "RivalsDamageTextGui"
 DamageTextGui.IgnoreGuiInset = true
@@ -692,7 +691,6 @@ if #TracerEvents > TRACER_POOL then
 table.remove(TracerEvents, 1)
 end
 end
-do
 -- // 5c. Target HUD gui (icons + gun name + damage-taken bar)
 local TargetHUDGui = Instance.new("ScreenGui")
 TargetHUDGui.Name = "AuroraTargetHUD"
@@ -968,7 +966,7 @@ return lf:Get("Reloading")
 end)
 return ok and val == true
 end
--- // 7. Viewmodel chams reconcile (+ wireframe refined)
+-- // 7. Viewmodel chams reconcile (+ wireframe: 0.75 transparency + thin white outline)
 local ChamsCache = {}
 local WireCache = {}
 local function ReconcileChams()
@@ -989,6 +987,7 @@ end
 end
 elseif model.Name:match("Arm") or model:FindFirstChild("LeftArm", true) or model:FindFirstChild("RightArm", true) then
 targets[#targets + 1] = { model = model, kind = "Arm" }
+end
 end
 end
 end
@@ -1033,8 +1032,8 @@ end
 end
 if not (Toggles.ChamsWireframe and Toggles.ChamsWireframe.Value) then
 for part, original in pairs(WireCache) do
-pcall(function() 
-part.Transparency = original.Transparency 
+pcall(function()
+part.Transparency = original.Transparency
 part.Material = original.Material
 end)
 WireCache[part] = nil
@@ -1216,7 +1215,6 @@ getgenv().Config.CrosshairOutlineThickness = Options.CrosshairOutlineThickness.V
 local rageMiscSel = Options.RageMisc.Value or {}
 getgenv().Config.RageMiscAutoSwap = rageMiscSel["Auto Swap Guns"] == true
 getgenv().Config.RageMiscProjectiles = rageMiscSel["Projectiles Only"] == true
--- Section keybinds (PC keys only; touch devices never fire them)
 for _, bind in ipairs(SECTION_BINDS) do
 local picker = Options[bind.Picker]
 local tgl = Toggles[bind.Toggle]
@@ -1274,7 +1272,6 @@ else
 FOVCircleFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 end
 FOVCircleFrame.Visible = getgenv().Config.ShowFOV
--- Visible aimbot: desktop = mousemoverel, mobile = CameraController SetRotation (Kicia method)
 if getgenv().Config.AimbotEnabled then
 local isTouch = UserInputService.TouchEnabled
 local abCenter = nil
@@ -1516,7 +1513,7 @@ end
 end)
 end
 InstallSilentShotWrap()
--- // 10. ESP (+ skeleton)
+-- // 10. ESP (+ skeleton + weapon)
 local function enemyOk(player)
 if player == LocalPlayer then return false end
 if not getgenv().Config.TeamCheck then return true end
@@ -1858,8 +1855,8 @@ local corner = Instance.new("UICorner", btn)
 corner.CornerRadius = UDim.new(1, 0)
 return btn
 end
-local BtnUp = makeFlyButton("FlyUp", "â ²", -196)
-local BtnDown = makeFlyButton("FlyDown", "â ¼", -112)
+local BtnUp = makeFlyButton("FlyUp", "^", -196)
+local BtnDown = makeFlyButton("FlyDown", "v", -112)
 local joystickVec = Vector2.new(0, 0)
 local joystickTouch = nil
 local joyRadius = 52
@@ -2258,7 +2255,6 @@ desyncCF = RageHoldCF
 end
 end
 end
--- Passive void/strafe cycle: void window hides (Void Time slider), attack window strafes (Attack Time slider)
 local voidWeight = getgenv().Config.VoidTime
 local attackWeight = getgenv().Config.AttackTime
 local totalWeight = voidWeight + attackWeight
@@ -2389,10 +2385,10 @@ HitSound:Play()
 end
 local hum = character:FindFirstChildOfClass("Humanoid")
 if hum and (hum.Health <= 0) then
-    if getgenv().Config.DeathSound ~= "None" then
-        DeathSound.SoundId = CustomDeathSounds[getgenv().Config.DeathSound]
-        DeathSound:Play()
-    end
+if getgenv().Config.DeathSound ~= "None" then
+DeathSound.SoundId = CustomDeathSounds[getgenv().Config.DeathSound]
+DeathSound:Play()
+end
 end
 ShowDamageText(hitPart.Position, damage)
 end
@@ -2566,7 +2562,6 @@ THStatus.Text = "Winning"
 THStatus.TextColor3 = Color3.fromRGB(120, 240, 120)
 end
 end)
-end
 -- // 15. Spoofers, Rapid Fire & Fast Melee
 pcall(function()
 local Gun = require(LocalPlayer.PlayerScripts.Modules.ItemTypes.Gun)
@@ -3069,7 +3064,6 @@ return _origCVM(self3, vmRef)
 end
 end
 end)
-end)
 end
 Toggles.UnlockAll:OnChanged(function(val)
 if val then enableUnlockAll() end
@@ -3227,4 +3221,4 @@ task.delay(0.5, function()
 ApplyFastMeleeState()
 end)
 end)
-Library:Notify("Project Aurora | Wireframe refined, Audio/ESP upgraded. RightShift for menu.", 5)
+Library:Notify("Project Aurora | compile-clean. Wireframe 0.75 + white outline. RightShift for menu.", 5)
