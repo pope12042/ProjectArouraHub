@@ -276,7 +276,8 @@ Snow = false,
 SkyboxPreset = "None",
 AspectRatio = false, AspectRatioValue = 0.7,
 ShowDamageText = false, DamageTextColor = Color3.fromRGB(255, 60, 60), DamageTextFont = "Code",
-BulletTracers = false, TracerColor = Color3.fromRGB(80, 170, 255), TracerDuration = 1,
+BulletTracers = false, TracerColor = Color3.fromRGB(80, 170, 255), TracerDuration = 3,
+TracerStyle = "Beam", TracerSize = 1, TracerFadeTime = 0.5, TracerSegs = 64, TracerSpread = 0.026, TracerGlow = true,
 TargetHUD = false,
 RageEnabled = false, VoidTime = 0.5, AttackTime = 0.5, FireRate = 0.001, WeaponSlot = "Melee",
 StatusFollow = "Screen",
@@ -288,6 +289,8 @@ Hitsound = "None", HitsoundVolume = 5, HitNotify = false,
 DeathSound = "None", DeathSoundVolume = 5,
 InfiniteJump = false, Noclip = false,
 Fly = false, FlySpeed = 60,
+WalkSpeed = false, WalkSpeedValue = 2,
+SlidingSpeed = false, SlidingSpeedValue = 10,
 CrosshairEnabled = false, CrosshairSize = 10, CrosshairGap = 4, CrosshairThickness = 2, CrosshairSpin = false, CrosshairSpinSpeed = 0, CrosshairColor = Color3.new(1,1,1),
 CrosshairBreathing = false, CrosshairBreathingSpeed = 2,
 CrosshairTopColor = Color3.new(1,1,1), CrosshairBottomColor = Color3.new(1,1,1),
@@ -356,6 +359,10 @@ MovementGroup:AddToggle("InfiniteJump", { Text = "Infinite Jump", Default = fals
 MovementGroup:AddToggle("Noclip", { Text = "Noclip", Default = false })
 MovementGroup:AddToggle("Fly", { Text = "Fly (camera direction)", Default = false, Tooltip = "Desktop: WASD + Space/Shift. Mobile: on-screen joystick + hold buttons." })
 MovementGroup:AddSlider("FlySpeed", { Text = "Fly Speed", Min = 10, Max = 300, Default = 60, Rounding = 0, Compact = true })
+MovementGroup:AddToggle("WalkSpeed", { Text = "Walk Speed", Default = false, Tooltip = "Lucent-style: hooks MechanicsController BASE_WALKSPEED upvalue with a proxy metatable multiplier." })
+MovementGroup:AddSlider("WalkSpeedValue", { Text = "Walk Multiplier", Min = 1, Max = 10, Default = 2, Rounding = 1, Compact = true })
+MovementGroup:AddToggle("SlidingSpeed", { Text = "Sliding Speed", Default = false, Tooltip = "Same upvalue hook, fires only while the Slide function is on the stack." })
+MovementGroup:AddSlider("SlidingSpeedValue", { Text = "Slide Multiplier", Min = 1, Max = 20, Default = 10, Rounding = 1, Compact = true })
 MovementGroup:AddLabel("Keybind"):AddKeyPicker("KeybindFly", { Default = "None", Mode = "Toggle", Text = "Fly" })
 local ChamsGroup = Tabs.Main:AddRightGroupbox("Viewmodel Chams")
 ChamsGroup:AddToggle("GunChams", { Text = "Gun Chams", Default = false })
@@ -477,10 +484,21 @@ WorldGroup:AddSlider("BloomSize", { Text = "Size", Min = 0, Max = 100, Default =
 WorldGroup:AddSlider("BloomThreshold", { Text = "Threshold", Min = 0, Max = 100, Default = 80, Rounding = 0 })
 WorldGroup:AddDivider()
 WorldGroup:AddToggle("Snow", { Text = "Snow", Default = false, Tooltip = "Falling particle snow field riding above you." })
-local BulletTracerGroup = Tabs.Visuals:AddLeftGroupbox("Bullet Tracers")
-BulletTracerGroup:AddToggle("BulletTracers", { Text = "Bullet Tracers", Default = false })
+local BulletTracerGroup = Tabs.Visuals:AddLeftGroupbox("Bullet Tracers (Lucent port)")
+BulletTracerGroup:AddToggle("BulletTracers", { Text = "Bullet Tracers", Default = false, Tooltip = "Hooks TracerEffect.Play: real muzzle-to-hitpoint tracers on your shots only." })
 :AddColorPicker("TracerColor", { Default = Color3.fromRGB(80, 170, 255), Title = "Tracer Color" })
-BulletTracerGroup:AddSlider("TracerDuration", { Text = "Trace Duration", Min = 0.1, Max = 5, Default = 1, Rounding = 1, Suffix = "s" })
+BulletTracerGroup:AddDropdown("TracerStyle", {
+Values = {"Beam", "Lightning V2", "Lightning", "Heartrate", "Chain", "Glitch", "Swirl", "Neon", "Plasma", "Laser"},
+Default = "Beam",
+Multi = false,
+Text = "Tracer Style",
+})
+BulletTracerGroup:AddSlider("TracerDuration", { Text = "Trace Duration", Min = 0.1, Max = 5, Default = 3, Rounding = 1, Suffix = "s" })
+BulletTracerGroup:AddSlider("TracerFadeTime", { Text = "Fade Time", Min = 0.1, Max = 3, Default = 0.5, Rounding = 1, Suffix = "s", Compact = true })
+BulletTracerGroup:AddSlider("TracerSize", { Text = "Tracer Size", Min = 0.1, Max = 5, Default = 1, Rounding = 1, Compact = true })
+BulletTracerGroup:AddSlider("TracerSegs", { Text = "Lightning Segs", Min = 2, Max = 64, Default = 64, Rounding = 0, Compact = true })
+BulletTracerGroup:AddSlider("TracerSpread", { Text = "Lightning Spread", Min = 0.005, Max = 0.5, Default = 0.026, Rounding = 3, Compact = true })
+BulletTracerGroup:AddToggle("TracerGlow", { Text = "Lightning Glow", Default = true })
 local TargetHUDGroup = Tabs.Visuals:AddRightGroupbox("Target HUD")
 TargetHUDGroup:AddToggle("TargetHUD", { Text = "Target HUD", Default = false, Tooltip = "Draggable card: player icon, gun icon + name, health bar, damage-taken bar, winning/losing/drawing." })
 TargetHUDGroup:AddLabel("Keybind"):AddKeyPicker("KeybindTargetHUD", { Default = "None", Mode = "Toggle", Text = "Target HUD" })
@@ -576,8 +594,8 @@ SpoofGroup:AddSlider("SpoofLevel", { Text = "Spoofed Level", Min = 1, Max = 1000
 SpoofGroup:AddToggle("WinstreakSpoof", { Text = "Winstreak Spoof", Default = false })
 SpoofGroup:AddSlider("SpoofWinstreak", { Text = "Spoofed Winstreak", Min = 0, Max = 1000, Default = 10, Rounding = 0 })
 local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu")
-MenuGroup:AddToggle("KeybindMenuOpen", { Default = Library.KeybindFrame.Visible, Text = "Open Keybind Menu", Callback = function(value) Library.KeybindFrame.Visible = value end})
-MenuGroup:AddToggle("ShowCustomCursor", {Text = "Custom Cursor", Default = true, Callback = function(Value) Library.ShowCustomCursor = Value end})
+MenuGroup:AddToggle("KeybindMenuOpen", { Default = Library.KeybindFrame.Visible, Text = "Open Keybind Menu", Callback = function(value) Library.KeybindFrame.Visible = value end })
+MenuGroup:AddToggle("ShowCustomCursor", { Text = "Custom Cursor", Default = true, Callback = function(Value) Library.ShowCustomCursor = Value end })
 MenuGroup:AddDivider()
 MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
 MenuGroup:AddButton("Unload", function() Library:Unload() end)
@@ -672,23 +690,13 @@ local SmoothTargetScreen = Vector2.new(0, 0)
 local LastSilentTargetPart = nil
 local RageTargetHead = nil
 local StatusTargetPart = nil
--- // 5b. Bullet tracer pool
-local TRACER_POOL = 24
-local TracerEvents = {}
-local tracerLines = {}
-for tracerI = 1, TRACER_POOL do
-local tl = Drawing.new("Line")
-tl.Thickness = 2
-tl.Visible = false
-tracerLines[tracerI] = tl
-end
+-- // 5b. Tracer spawn forward-ref (Lucent system assigns later)
+local SpawnTracer = nil
 local function PushTracer(fromPos, toPos)
 if not getgenv().Config.BulletTracers then return end
-if not getgenv().Config.AimEnabled then return end
 if typeof(fromPos) ~= "Vector3" or typeof(toPos) ~= "Vector3" then return end
-table.insert(TracerEvents, { from = fromPos, to = toPos, t = tick() })
-if #TracerEvents > TRACER_POOL then
-table.remove(TracerEvents, 1)
+if SpawnTracer then
+SpawnTracer(fromPos, toPos)
 end
 end
 -- // 5c. Target HUD gui (icons + gun name + damage-taken bar)
@@ -1164,6 +1172,12 @@ getgenv().Config.DamageTextFont = Options.DamageTextFont.Value
 getgenv().Config.BulletTracers = Toggles.BulletTracers.Value
 getgenv().Config.TracerColor = Options.TracerColor.Value
 getgenv().Config.TracerDuration = Options.TracerDuration.Value
+getgenv().Config.TracerStyle = Options.TracerStyle.Value
+getgenv().Config.TracerSize = Options.TracerSize.Value
+getgenv().Config.TracerFadeTime = Options.TracerFadeTime.Value
+getgenv().Config.TracerSegs = Options.TracerSegs.Value
+getgenv().Config.TracerSpread = Options.TracerSpread.Value
+getgenv().Config.TracerGlow = Toggles.TracerGlow.Value
 getgenv().Config.TargetHUD = Toggles.TargetHUD.Value
 getgenv().Config.RageEnabled = Toggles.RageEnabled.Value
 getgenv().Config.VoidTime = Options.VoidTime.Value / 100
@@ -1195,6 +1209,10 @@ getgenv().Config.InfiniteJump = Toggles.InfiniteJump.Value
 getgenv().Config.Noclip = Toggles.Noclip.Value
 getgenv().Config.Fly = Toggles.Fly.Value
 getgenv().Config.FlySpeed = Options.FlySpeed.Value
+getgenv().Config.WalkSpeed = Toggles.WalkSpeed.Value
+getgenv().Config.WalkSpeedValue = Options.WalkSpeedValue.Value
+getgenv().Config.SlidingSpeed = Toggles.SlidingSpeed.Value
+getgenv().Config.SlidingSpeedValue = Options.SlidingSpeedValue.Value
 getgenv().Config.CrosshairEnabled = Toggles.CrosshairEnabled.Value
 getgenv().Config.CrosshairSize = Options.CrosshairSize.Value
 getgenv().Config.CrosshairGap = Options.CrosshairGap.Value
@@ -2851,6 +2869,63 @@ SKRebuildWeapons()
 SKSetMode(SKMode)
 end
 end)
+-- // 15d. Walk / Slide speed (Lucent CharacterSystem upvalue hook, de-artifacted)
+local WalkSpeedHooked = false
+local WalkSpeedOldUpvalue = nil
+local function InstallWalkSpeedHook()
+if WalkSpeedHooked then return true end
+local okMc, mc = pcall(function()
+return require(LocalPlayer.PlayerScripts.Controllers.MechanicsController)
+end)
+if not okMc or type(mc) ~= "table" then return false end
+local mt = getmetatable(mc)
+local idx = (type(mt) == "table") and rawget(mt, "__index") or nil
+local getter = (type(idx) == "table") and rawget(idx, "_GetWalkSpeed") or nil
+if type(getter) ~= "function" then return false end
+local targetTable = nil
+local targetIndex = nil
+for k, uv in pairs(debug.getupvalues(getter)) do
+if type(uv) == "table" and rawget(uv, "BASE_WALKSPEED") ~= nil then
+targetTable = uv
+targetIndex = k
+break
+end
+end
+if not targetIndex then return false end
+WalkSpeedOldUpvalue = targetTable
+debug.setupvalue(getter, targetIndex, setmetatable({}, {
+__index = function(_, key)
+if key ~= "BASE_WALKSPEED" then
+return rawget(WalkSpeedOldUpvalue, key)
+end
+local base = rawget(WalkSpeedOldUpvalue, "BASE_WALKSPEED")
+if getgenv().Config.SlidingSpeed and debug.info(3, "n") == "Slide" then
+return base * (getgenv().Config.SlidingSpeedValue or 10)
+end
+if getgenv().Config.WalkSpeed then
+return base * (getgenv().Config.WalkSpeedValue or 2)
+end
+return base
+end,
+}))
+WalkSpeedHooked = true
+return true
+end
+local function QueueWalkSpeedHook()
+if WalkSpeedHooked then return end
+task.spawn(function()
+for _ = 1, 60 do
+if InstallWalkSpeedHook() then return end
+task.wait(0.5)
+end
+end)
+end
+Toggles.WalkSpeed:OnChanged(function(val)
+if val then QueueWalkSpeedHook() end
+end)
+Toggles.SlidingSpeed:OnChanged(function(val)
+if val then QueueWalkSpeedHook() end
+end)
 -- // 16. Unlock All Cosmetics
 local UnlockInstalled = false
 local function enableUnlockAll()
@@ -2873,7 +2948,9 @@ local _base = _cosLib.Cosmetics[nm]
 if not _base then return nil end
 local _d = {}
 for k, v in pairs(_base) do _d[k] = v end
-_d.Name = nm; _d.Type = _d.Type or ctype; _d.Seed = _d.Seed or math.random(1, 1000000)
+_d.Name = nm
+_d.Type = _d.Type or ctype
+_d.Seed = _d.Seed or math.random(1, 1000000)
 if _enumLib then
 local _s, _eid = pcall(_enumLib.ToEnum, _enumLib, nm)
 if _s and _eid then _d.Enum = _eid; _d.ObjectID = _d.ObjectID or _eid end
@@ -3130,42 +3207,272 @@ CrosshairLines[name].Color = p.color
 CrosshairLines[name].Thickness = thickness
 end
 end)
--- // 17b. Bullet tracer renderer
-RunService.RenderStepped:Connect(function()
-local cam = workspace.CurrentCamera
-if not cam then
-for i = 1, TRACER_POOL do tracerLines[i].Visible = false end
-return
+-- // 17b. Bullet Tracer System (Lucent BulletTracerSystem port, de-artifacted)
+local TR = {
+Hooked = false,
+EffectHooked = false,
+Connection = nil,
+Retry = nil,
+Parts = {},
+Tracers = {},
+Dedupe = {},
+Frame = 0,
+}
+local TR_TEXTURES = {
+Line = "",
+Beam = "rbxassetid://12781852245",
+Lightning = "rbxassetid://446111271",
+Heartrate = "rbxassetid://5830549480",
+Chain = "rbxassetid://9632168658",
+Glitch = "rbxassetid://8089467613",
+Swirl = "rbxassetid://5638168605",
+Neon = "rbxassetid://6361963422",
+Plasma = "rbxassetid://8993645509",
+Laser = "rbxassetid://14549123968",
+}
+local function TRMuzzle()
+local viewModels = workspace:FindFirstChild("ViewModels")
+if not viewModels then return nil end
+local firstPerson = viewModels:FindFirstChild("FirstPerson")
+if not firstPerson then return nil end
+local pname = LocalPlayer.Name
+for _, child in ipairs(firstPerson:GetChildren()) do
+if child:IsA("Model") and child.Name:find("^" .. pname) then
+local itemVisual = child:FindFirstChild("ItemVisual")
+itemVisual = itemVisual and itemVisual:FindFirstChild("Body")
+local bodyPrimary = itemVisual and itemVisual:FindFirstChild("BodyPrimary")
+bodyPrimary = bodyPrimary and bodyPrimary:FindFirstChild("_muzzle")
+if bodyPrimary and bodyPrimary:IsA("Attachment") then
+return bodyPrimary.WorldPosition
 end
+end
+end
+return nil
+end
+local function TRCreatePart(color, transparency, glow)
+local part = Instance.new("Part")
+part.Anchored = true
+part.CanCollide = false
+part.CanQuery = false
+part.CanTouch = false
+part.CastShadow = false
+part.Color = color
+part.Material = glow and Enum.Material.Neon or Enum.Material.SmoothPlastic
+part.Transparency = transparency
+part.Size = Vector3.new(0, 0, 0)
+part.CFrame = CFrame.new()
+part.Parent = workspace
+TR.Parts[#TR.Parts + 1] = part
+return part
+end
+local function TRLightningV2(startPos, endPos)
+local color = getgenv().Config.TracerColor
+local thick = 0.1 * getgenv().Config.TracerSize
+local glow = getgenv().Config.TracerGlow ~= false
+local duration = getgenv().Config.TracerDuration
+local segs = math.clamp(math.floor(getgenv().Config.TracerSegs or 8), 2, 64)
+local spread = getgenv().Config.TracerSpread or 0.026
+local delta = endPos - startPos
+local magnitude = delta.Magnitude
+if magnitude < 0.5 then return end
+local unit = delta.Unit
+local sideRef = Vector3.new(0, 1, 0)
+if math.abs(unit:Dot(sideRef)) > 0.88 then
+sideRef = Vector3.new(1, 0, 0)
+end
+local side = unit:Cross(sideRef).Unit
+local points = {}
+for i = 0, segs do
+points[i] = startPos + delta * i / segs
+end
+local parts = {}
+for i = 1, segs do
+parts[i] = TRCreatePart(color, 0, glow)
+end
+task.spawn(function()
+local wobbleBase = spread * 0.13 * magnitude
+local elapsed = 0
+while elapsed < duration do
+elapsed = elapsed + task.wait()
+local prog = elapsed / duration
+local transparency = math.min(1, prog * prog * 1.4)
+local wobble = wobbleBase * (1 - prog * 0.5)
+for i = 1, segs - 1 do
+points[i] = startPos + delta * i / segs + side * math.sin(elapsed * 6 + i * 1.9) * wobble
+end
+points[0] = startPos
+points[segs] = endPos
+for i = 1, segs do
+local a = points[i - 1]
+local b = points[i]
+local segLen = (b - a).Magnitude
+local part = parts[i]
+if segLen >= 0.01 and part and part.Parent then
+part.CFrame = CFrame.new(a, b) * CFrame.new(0, 0, -segLen * 0.5)
+local w = math.max(0.03, thick * (1 - prog * 0.5))
+part.Size = Vector3.new(w, w, segLen)
+part.Transparency = transparency
+end
+end
+end
+for i = 1, segs do
+if parts[i] and parts[i].Parent then
+parts[i]:Destroy()
+end
+end
+end)
+end
+local function TRBeam(startPos, endPos)
+local attachment0 = Instance.new("Attachment")
+attachment0.Parent = workspace.Terrain
+local attachment1 = Instance.new("Attachment")
+attachment1.Parent = workspace.Terrain
+local beam = Instance.new("Beam")
+beam.Attachment0 = attachment0
+beam.Attachment1 = attachment1
+beam.Color = ColorSequence.new(getgenv().Config.TracerColor)
+local width = (getgenv().Config.TracerStyle == "Laser" and 0.02 or 0.15) * getgenv().Config.TracerSize
+beam.Width0 = width
+beam.Width1 = width
+beam.Transparency = NumberSequence.new(0)
+beam.FaceCamera = true
+beam.LightEmission = 0.8
+beam.LightInfluence = 0.2
+local tex = TR_TEXTURES[getgenv().Config.TracerStyle]
+if tex and tex ~= "" then
+beam.Texture = tex
+beam.TextureLength = 4
+beam.TextureSpeed = 1
+end
+beam.Parent = workspace.Terrain
+attachment0.WorldPosition = startPos
+attachment1.WorldPosition = endPos
+TR.Parts[#TR.Parts + 1] = beam
+TR.Parts[#TR.Parts + 1] = attachment0
+TR.Parts[#TR.Parts + 1] = attachment1
+TR.Tracers[#TR.Tracers + 1] = {
+Beam = beam,
+Attachment0 = attachment0,
+Attachment1 = attachment1,
+StartPos = startPos,
+EndPos = endPos,
+Lifetime = getgenv().Config.TracerDuration,
+FadeTime = getgenv().Config.TracerFadeTime,
+CreatedTime = tick(),
+}
+end
+local function TRSpawn(startPos, endPos)
+if not startPos or not endPos then return end
+local key = string.format("%.1f_%.1f_%.1f_%.1f_%.1f_%.1f", startPos.X, startPos.Y, startPos.Z, endPos.X, endPos.Y, endPos.Z)
 local now = tick()
-local dur = math.max(getgenv().Config.TracerDuration or 1, 0.1)
-local col = getgenv().Config.TracerColor or Color3.new(1, 1, 1)
-for i = #TracerEvents, 1, -1 do
-local ev = TracerEvents[i]
-if now - ev.t > dur then
-table.remove(TracerEvents, i)
-end
-end
-local idx = 1
-for _, ev in ipairs(TracerEvents) do
-local line = tracerLines[idx]
-if not line then break end
-idx = idx + 1
-local f, fOn = cam:WorldToViewportPoint(ev.from)
-local t2, tOn = cam:WorldToViewportPoint(ev.to)
-if fOn and tOn and f.Z > 0 and t2.Z > 0 then
-local age = now - ev.t
-line.Visible = true
-line.From = Vector2.new(f.X, f.Y)
-line.To = Vector2.new(t2.X, t2.Y)
-line.Color = col
-line.Transparency = math.clamp(1 - age / dur, 0, 1)
+local last = TR.Dedupe[key]
+if last and now - last < 0.05 then return end
+TR.Dedupe[key] = now
+if getgenv().Config.TracerStyle == "Lightning V2" then
+TRLightningV2(startPos, endPos)
 else
-line.Visible = false
+TRBeam(startPos, endPos)
 end
 end
-for i = idx, TRACER_POOL do
-tracerLines[i].Visible = false
+SpawnTracer = TRSpawn
+local function TRDestroy(entry)
+if entry.Beam then entry.Beam:Destroy() end
+if entry.Attachment0 then entry.Attachment0:Destroy() end
+if entry.Attachment1 then entry.Attachment1:Destroy() end
+end
+local function TRUpdate()
+if #TR.Tracers == 0 then return end
+TR.Frame = TR.Frame + 1
+local now = tick()
+if TR.Frame % 120 == 0 then
+for k, v in next, TR.Dedupe, nil do
+if now - v > 1 then
+TR.Dedupe[k] = nil
+end
+end
+end
+local i = #TR.Tracers
+while i >= 1 do
+local entry = TR.Tracers[i]
+local age = now - entry.CreatedTime
+if entry.Lifetime <= age then
+TRDestroy(entry)
+TR.Tracers[i] = TR.Tracers[#TR.Tracers]
+TR.Tracers[#TR.Tracers] = nil
+else
+local fadeStart = entry.Lifetime - entry.FadeTime
+local alpha = 1
+if age >= fadeStart and entry.FadeTime > 0 then
+alpha = 1 - math.clamp((age - fadeStart) / entry.FadeTime, 0, 1)
+end
+if entry.Attachment0 then entry.Attachment0.WorldPosition = entry.StartPos end
+if entry.Attachment1 then entry.Attachment1.WorldPosition = entry.EndPos end
+entry.Beam.Transparency = NumberSequence.new(1 - alpha)
+end
+i = i - 1
+end
+end
+local function TRHookEffect()
+if TR.EffectHooked then return end
+pcall(function()
+local TracerEffect = require(LocalPlayer.PlayerScripts.Modules.TracerEffect)
+local play = TracerEffect.Play
+TracerEffect.Play = function(self, shotData, ...)
+if getgenv().Config.BulletTracers and shotData and shotData.IsLocal and shotData.RaycastResults then
+local muzzle = TRMuzzle()
+if muzzle then
+for _, raycastResult in ipairs(shotData.RaycastResults) do
+if raycastResult.Position then
+TRSpawn(muzzle, raycastResult.Position)
+end
+end
+end
+end
+return play(self, shotData, ...)
+end
+TR.EffectHooked = true
+end)
+end
+local function TREnable()
+if TR.Hooked then return end
+TR.Hooked = true
+TRHookEffect()
+if not TR.Connection then
+TR.Connection = RunService.RenderStepped:Connect(TRUpdate)
+end
+if not TR.Retry then
+TR.Retry = task.spawn(function()
+for _ = 1, 30 do
+if TR.EffectHooked or not getgenv().Config.BulletTracers then break end
+TRHookEffect()
+task.wait(0.5)
+end
+TR.Retry = nil
+end)
+end
+end
+local function TRDisable()
+TR.Hooked = false
+if TR.Connection then
+TR.Connection:Disconnect()
+TR.Connection = nil
+end
+for _, entry in ipairs(TR.Tracers) do
+TRDestroy(entry)
+end
+TR.Tracers = {}
+for _, part in ipairs(TR.Parts) do
+if part and part.Parent then
+part:Destroy()
+end
+end
+TR.Parts = {}
+end
+Toggles.BulletTracers:OnChanged(function(val)
+if val then
+TREnable()
+else
+TRDisable()
 end
 end)
 -- // 18. Auto Load (settings)
@@ -3219,6 +3526,12 @@ LoadAutoloadConfig()
 end
 task.delay(0.5, function()
 ApplyFastMeleeState()
+if Toggles.BulletTracers.Value then
+TREnable()
+end
+if Toggles.WalkSpeed.Value or Toggles.SlidingSpeed.Value then
+QueueWalkSpeedHook()
+end
 end)
 end)
-Library:Notify("Project Aurora | compile-clean. Wireframe 0.75 + white outline. RightShift for menu.", 5)
+Library:Notify("Project Aurora | lucent tracers + walkspeed ported, compile clean. RightShift for menu.", 5)
