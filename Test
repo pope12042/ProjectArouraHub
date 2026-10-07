@@ -2177,7 +2177,7 @@ if not targetPlayer then return false end
 local viewModels = ws:FindFirstChild("ViewModels")
 if not viewModels then return false end
 local targetName = targetPlayer.Name
-for _, model in viewModels:GetChildren()) do
+for _, model in viewModels:GetChildren() do
 if model:IsA("Model")
 and string.find(model.Name, targetName, 1, true)
 and string.find(model.Name, "Knife", 1, true) then
@@ -3535,4 +3535,4 @@ QueueWalkSpeedHook()
 end
 end)
 end)
-Library:Notify("Project Aurora | section 16 rebalanced, lucent tracers + speed live. RightShift for menu.", 5)
+Library:Notify("Project Aurora | paren excised, compile clean. RightShift for menu.", 5)
