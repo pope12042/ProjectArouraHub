@@ -187,24 +187,21 @@ end
 getgenv().Drawing = Drawing
 end
 
--- // Custom Sound Downloader (scoped)
+-- // Custom Sound Downloader (scoped) — NEVER re-downloads or replaces existing files
 local CustomHitSounds, CustomDeathSounds
 do
 local SoundCache = {}
 local function fetchSound(key, url)
 if SoundCache[key] then return SoundCache[key] end
 local fname = key .. ".mp3"
-local i = 1
-local base = key
-while isfile(fname) do
-fname = base .. tostring(i) .. ".mp3"
-i = i + 1
+if isfile and isfile(fname) then
+local asset = getcustomasset(fname)
+SoundCache[key] = asset
+return asset
 end
-if not isfile(fname) then
 pcall(function()
 writefile(fname, game:HttpGet(url))
 end)
-end
 local asset = getcustomasset(fname)
 SoundCache[key] = asset
 return asset
@@ -285,6 +282,8 @@ IgnoreProtected = true, ProtectedSettings = { ["katana deflecting"] = true, ["bl
 AlwaysBackstab = false,
 AntiAim = false, AntiAimPitch = "random", AntiAimYaw = "random", CustomPitch = 0, CustomYaw = 0, FloorHide = false,
 RageSettings = { ["swap weapons when empty"] = true, ["prefer projectile weapon"] = true },
+VoidType = "Hybrid", RageHideVoid = 50,
+AutoDodge = true, AutoDodgeRange = 18,
 CounterType = "none",
 StatusFollow = "Screen",
 NameSpoof = false, YourName = "Andy", EnemyName = "Johnny", EnemyNameSpoof = false, EnemySpoofName = "Target",
@@ -308,13 +307,17 @@ SkinChanger = false,
 AutoLoadConfig = false,
 }
 
--- // shared rage state (chunk-level, read by status + hud sections)
+-- // shared rage state (chunk-level)
 local RageStatusOverride = nil
 local RageTargetHead = nil
 local ObjectIdToPlayer = {}
 local RageAttackers = {}
 local RageVoided = {}
 local RagePrevPos = {}
+local LastLocalShot = 0
+local function MarkLocalShot()
+LastLocalShot = os.clock()
+end
 
 -- // 4. Linoria UI Setup (scoped)
 local Library, Options, Toggles, Window, Tabs, ThemeManager, SaveManager, SkyPresets
@@ -329,7 +332,7 @@ Library.ShowToggleFrameInKeybinds = true
 Library.ShowCustomCursor = true
 Library.NotifySide = "Left"
 Window = Library:CreateWindow({
-Title = "Project Aurora V5 | dsc.gg/getaroura",
+Title = "Project Aurora V6 | dsc.gg/getaroura",
 Center = true,
 AutoShow = true,
 Resizable = true,
@@ -345,47 +348,58 @@ Visuals = Window:AddTab("Visuals"),
 Misc = Window:AddTab("Misc"),
 ["UI Settings"] = Window:AddTab("UI Settings"),
 }
-local AimGroup = Tabs.Main:AddLeftGroupbox("Silent Aim")
-AimGroup:AddToggle("AimEnabled", { Text = "enabled", Default = false, Tooltip = "Lucent-style: camera snaps inside Gun.StartShooting for one tick, bullet flies true, screen never moves." })
+-- mini-tab aim panes (matches reference layout)
+local AimTabbox = Tabs.Main:AddLeftTabbox("Aim")
+local SilentTab = AimTabbox:AddTab("silent aim")
+SilentTab:AddToggle("AimEnabled", { Text = "enabled", Default = false, Tooltip = "Lucent-style: camera snaps inside Gun.StartShooting for one tick, bullet flies true, screen never moves." })
 :AddKeyPicker("KeybindSilentAim", { Default = "MB2", Mode = "Toggle", Text = "Silent Aim" })
-AimGroup:AddToggle("ClosestPart", { Text = "closest part", Default = false })
-AimGroup:AddToggle("ClosestPosition", { Text = "closest position", Default = false })
-AimGroup:AddToggle("DelayPosition", { Text = "delay position", Default = false })
-AimGroup:AddToggle("ShowFOV", { Text = "show fov", Default = false })
+SilentTab:AddToggle("ClosestPart", { Text = "closest part", Default = false, Tooltip = "Picks the body part nearest your crosshair instead of the fixed hit part." })
+SilentTab:AddToggle("ClosestPosition", { Text = "closest position", Default = false, Tooltip = "Aims at the nearest surface point of the part instead of its center." })
+SilentTab:AddToggle("DelayPosition", { Text = "delay position", Default = false, Tooltip = "Leads moving targets using the prediction slider." })
+SilentTab:AddToggle("ShowFOV", { Text = "show fov", Default = false })
 :AddColorPicker("FOVColor1", { Default = Color3.new(1,1,1) })
 :AddColorPicker("FOVColor2", { Default = Color3.fromRGB(80, 170, 255) })
 :AddColorPicker("FOVColor3", { Default = Color3.fromRGB(255, 0, 255) })
-AimGroup:AddSlider("FOVRadius", { Text = "radius", Min = 50, Max = 1000, Default = 150, Suffix = "px", Rounding = 0 })
-AimGroup:AddSlider("SilentSmoothing", { Text = "smoothing", Min = 1, Max = 100, Default = 100, Suffix = "%", Rounding = 0 })
-AimGroup:AddSlider("HitChance", { Text = "hit chance", Min = 0, Max = 100, Default = 100, Suffix = "%", Rounding = 0 })
-AimGroup:AddToggle("TeamCheck", { Text = "team check", Default = false })
-AimGroup:AddDropdown("HitPart", { Text = "hit part", Values = {"Head", "HumanoidRootPart", "Torso"}, Default = 1 })
-AimGroup:AddSlider("FOVSpinSpeed", { Text = "fov spin", Min = 0, Max = 10, Default = 1, Rounding = 1, Compact = true })
-AimGroup:AddDropdown("SilentFollow", {
+SilentTab:AddSlider("FOVRadius", { Text = "radius", Min = 50, Max = 1000, Default = 150, Suffix = "px", Rounding = 0 })
+SilentTab:AddSlider("SilentSmoothing", { Text = "smoothing", Min = 1, Max = 100, Default = 100, Suffix = "%", Rounding = 0, Tooltip = "100% = instant snap. Lower eases the silent point toward the target." })
+SilentTab:AddSlider("HitChance", { Text = "hit chance", Min = 0, Max = 100, Default = 100, Suffix = "%", Rounding = 0 })
+SilentTab:AddToggle("TeamCheck", { Text = "team check", Default = false })
+SilentTab:AddDropdown("HitPart", { Text = "hit part", Values = {"Head", "HumanoidRootPart", "Torso"}, Default = 1 })
+SilentTab:AddSlider("FOVSpinSpeed", { Text = "fov spin", Min = 0, Max = 10, Default = 1, Rounding = 1, Compact = true })
+SilentTab:AddDropdown("SilentFollow", {
 Values = {"Follow Target", "Follow Gun Tip"},
 Default = "Follow Target",
 Multi = false,
 Text = "silent follows",
+Tooltip = "Follow Gun Tip centers FOV selection and the FOV circle on your smoothed muzzle position.",
 })
-local AimbotGroup = Tabs.Main:AddLeftGroupbox("Aimbot")
-AimbotGroup:AddToggle("AimbotEnabled", { Text = "enabled", Default = false })
+local AimbotTab = AimTabbox:AddTab("aimbot")
+AimbotTab:AddToggle("AimbotEnabled", { Text = "enabled", Default = false, Tooltip = "Visible assist. Desktop: mousemoverel. Mobile: steers the game CameraController rotation (no mouse needed)." })
 :AddKeyPicker("KeybindAimbot", { Default = "None", Mode = "Toggle", Text = "Aimbot" })
-AimbotGroup:AddSlider("AimSpeed", { Text = "speed", Min = 1, Max = 100, Default = 100, Suffix = "%", Rounding = 0 })
-AimbotGroup:AddSlider("AimSens", { Text = "smoothing", Min = 1, Max = 100, Default = 100, Suffix = "%", Rounding = 0 })
-AimbotGroup:AddSlider("Prediction", { Text = "prediction", Min = 0, Max = 200, Default = 100, Suffix = "ms", Rounding = 0 })
-AimbotGroup:AddSlider("JumpSmooth", { Text = "jump smoothing", Min = 0, Max = 100, Default = 100, Suffix = "%", Rounding = 0 })
-AimbotGroup:AddToggle("AimWallCheck", { Text = "wall check", Default = true })
+AimbotTab:AddSlider("AimSpeed", { Text = "speed", Min = 1, Max = 100, Default = 100, Suffix = "%", Rounding = 0 })
+AimbotTab:AddSlider("AimSens", { Text = "smoothing", Min = 1, Max = 100, Default = 100, Suffix = "%", Rounding = 0 })
+AimbotTab:AddSlider("Prediction", { Text = "prediction", Min = 0, Max = 200, Default = 100, Suffix = "ms", Rounding = 0 })
+AimbotTab:AddSlider("JumpSmooth", { Text = "jump smoothing", Min = 0, Max = 100, Default = 100, Suffix = "%", Rounding = 0 })
+AimbotTab:AddToggle("AimWallCheck", { Text = "wall check", Default = true, Tooltip = "Skips aimbot assist when a wall blocks the line of sight to the target." })
 local RageGroup = Tabs.Main:AddLeftGroupbox("UE Ragebot")
 RageGroup:AddToggle("RageEnabled", { Text = "ragebot enabled", Default = false })
 :AddKeyPicker("KeybindRagebot", { Default = "None", Mode = "Toggle", Text = "Ragebot" })
 RageGroup:AddDropdown("RageMode", { Text = "mode", Values = {"gun", "knife", "auto"}, Default = 1, Tooltip = "how the ragebot fights, defaulting to gun if not possible" })
 RageGroup:AddDropdown("RageWeapon", { Text = "weapon preference", Values = {"primary", "secondary", "melee", "knife"}, Default = 2, Tooltip = "which weapon the ragebot will use first" })
 RageGroup:AddDivider()
-RageGroup:AddToggle("VoidSpam", { Text = "void spam", Default = true })
-RageGroup:AddSlider("VoidHide", { Text = "void hide time", Min = 0.05, Max = 1, Default = 0.25, Rounding = 2, Suffix = "s" })
-RageGroup:AddSlider("VoidAttack", { Text = "void attack time", Min = 0.01, Max = 0.5, Default = 0.01, Rounding = 2, Suffix = "s" })
-RageGroup:AddSlider("ShootAttempts", { Text = "shoot attempts", Min = 1, Max = 10, Default = 2, Rounding = 0 })
+RageGroup:AddToggle("UEVoidSpam", { Text = "void spam", Default = true })
+RageGroup:AddSlider("UEHideTime", { Text = "void hide time", Min = 0.05, Max = 1, Default = 0.25, Rounding = 2, Suffix = "s" })
+RageGroup:AddSlider("UEAttackTime", { Text = "void attack time", Min = 0.01, Max = 0.5, Default = 0.01, Rounding = 2, Suffix = "s" })
+RageGroup:AddSlider("UEShootAttempts", { Text = "shoot attempts", Min = 1, Max = 10, Default = 2, Rounding = 0 })
 RageGroup:AddSlider("BurstDelay", { Text = "burst delay", Min = 0, Max = 1000, Default = 100, Rounding = 0, Suffix = "ms", Tooltip = "the delay between each burst" })
+RageGroup:AddSlider("RageHideVoid", { Text = "void depth (1-3m)", Min = 0, Max = 100, Default = 50, Suffix = "%", Rounding = 0, Compact = true })
+RageGroup:AddDropdown("VoidType", {
+Values = {"Hybrid", "Drift", "Void Y", "Spiral", "Random", "Zigzag", "Infinity"},
+Default = "Hybrid",
+Multi = false,
+Text = "Void Type",
+Tooltip = "Desync path pattern applied during the attack window.",
+})
 RageGroup:AddDivider()
 RageGroup:AddToggle("Priority", { Text = "priority targeting", Default = false, Tooltip = "prioritizes players for ragebot" })
 RageGroup:AddToggle("PriorityNotify", { Text = "priority notification", Default = true })
@@ -422,6 +436,8 @@ Text = "protected filters",
 })
 RageGroup:AddToggle("AlwaysBackstab", { Text = "always backstab", Default = false })
 RageGroup:AddDivider()
+RageGroup:AddToggle("AutoDodge", { Text = "auto dodge (close range)", Default = true, Tooltip = "When near the target, swings you perpendicular and hops so their aim whiffs." })
+RageGroup:AddSlider("AutoDodgeRange", { Text = "dodge range", Min = 5, Max = 40, Default = 18, Rounding = 0, Suffix = "st" })
 RageGroup:AddToggle("AntiAim", { Text = "anti aim", Default = false })
 RageGroup:AddDropdown("AntiAimPitch", { Text = "pitch", Values = {"random", "custom", "none"}, Default = 1 })
 RageGroup:AddDropdown("AntiAimYaw", { Text = "yaw", Values = {"random", "custom", "none"}, Default = 1 })
@@ -438,16 +454,27 @@ Text = "ragebot settings",
 })
 RageGroup:AddDropdown("CounterType", {
 Values = {"none", "kicia", "nebula", "ue"},
+DisabledValues = { "nebula" },
 Default = "none",
 Multi = false,
 Text = "Counter Type",
+Tooltip = "Anti-rage desync patterns. Nebula is currently disabled.",
 })
+local counterNativeDisabled = false
+pcall(function()
+if type(Options.CounterType.SetDisabledValues) == "function" then
+Options.CounterType:SetDisabledValues({ "nebula" })
+counterNativeDisabled = true
+end
+end)
+if not counterNativeDisabled then
 Options.CounterType:OnChanged(function(val)
 if val == "nebula" then
 Library:Notify("Nebula counter is currently disabled.", 2)
 Options.CounterType:SetValue("none")
 end
 end)
+end
 local MovementGroup = Tabs.Main:AddRightGroupbox("Movement")
 MovementGroup:AddToggle("InfiniteJump", { Text = "Infinite Jump", Default = false })
 MovementGroup:AddToggle("Noclip", { Text = "Noclip", Default = false })
@@ -492,6 +519,11 @@ Default = "Hit {plr} in the {part} for {dmg} using {weapon}",
 Finished = true,
 Placeholder = "Hit {plr}...",
 })
+ExploitGroup:AddLabel("Variables:")
+ExploitGroup:AddLabel("{plr} = player")
+ExploitGroup:AddLabel("{dmg} = damage dealt")
+ExploitGroup:AddLabel("{part} = hit part")
+ExploitGroup:AddLabel("{weapon} = hit using gun name")
 local RageStatusGroup = Tabs.Main:AddRightGroupbox("Status (On Screen)")
 RageStatusGroup:AddDropdown("StatusFont", { Text = "Status Font", Values = FONT_NAMES, Default = 1 })
 RageStatusGroup:AddSlider("StatusX", { Text = "Text X", Min = 0, Max = 100, Default = 50, Suffix = "%", Rounding = 0 })
@@ -1099,7 +1131,7 @@ ChamsCache[model] = nil
 end
 end
 end
--- // 8. UI Sync Loop (scoped)
+-- // 8. UI Sync Loop + aim math + skybox + aspect (scoped)
 do
 local cc = Instance.new("ColorCorrectionEffect", Lighting)
 local spinAngle = 0
@@ -1199,10 +1231,10 @@ getgenv().Config.TargetHUD = Toggles.TargetHUD.Value
 getgenv().Config.RageEnabled = Toggles.RageEnabled.Value
 getgenv().Config.RageMode = Options.RageMode.Value
 getgenv().Config.RageWeapon = Options.RageWeapon.Value
-getgenv().Config.VoidSpam = Toggles.VoidSpam.Value
-getgenv().Config.VoidHide = Options.VoidHide.Value
-getgenv().Config.VoidAttack = Options.VoidAttack.Value
-getgenv().Config.ShootAttempts = Options.ShootAttempts.Value
+getgenv().Config.VoidSpam = Toggles.UEVoidSpam.Value
+getgenv().Config.VoidHide = Options.UEHideTime.Value
+getgenv().Config.VoidAttack = Options.UEAttackTime.Value
+getgenv().Config.ShootAttempts = Options.UEShootAttempts.Value
 getgenv().Config.BurstDelay = Options.BurstDelay.Value / 1000
 getgenv().Config.Priority = Toggles.Priority.Value
 getgenv().Config.PriorityNotify = Toggles.PriorityNotify.Value
@@ -1213,12 +1245,16 @@ getgenv().Config.LimitDistance = Toggles.LimitDistance.Value
 getgenv().Config.MaxDistance = Options.MaxDistance.Value
 getgenv().Config.IgnoreProtected = Toggles.IgnoreProtected.Value
 getgenv().Config.AlwaysBackstab = Toggles.AlwaysBackstab.Value
+getgenv().Config.AutoDodge = Toggles.AutoDodge.Value
+getgenv().Config.AutoDodgeRange = Options.AutoDodgeRange.Value
 getgenv().Config.AntiAim = Toggles.AntiAim.Value
 getgenv().Config.AntiAimPitch = Options.AntiAimPitch.Value
 getgenv().Config.AntiAimYaw = Options.AntiAimYaw.Value
 getgenv().Config.CustomPitch = Options.CustomPitch.Value
 getgenv().Config.CustomYaw = Options.CustomYaw.Value
 getgenv().Config.FloorHide = Toggles.FloorHide.Value
+getgenv().Config.VoidType = Options.VoidType.Value
+getgenv().Config.RageHideVoid = Options.RageHideVoid.Value
 getgenv().Config.CounterType = Options.CounterType.Value
 getgenv().Config.StatusFollow = Options.StatusFollow.Value
 getgenv().Config.NameSpoof = Toggles.NameSpoof.Value
@@ -1507,6 +1543,7 @@ local center = (getgenv().Config.SilentFollow == "Follow Gun Tip") and SmoothGun
 local phem25 = phem9(center)
 if not phem25 then return phem8(self, phem19, phem20, phem21, phem22, phem23, phem24) end
 LastSilentTargetPart = phem25
+MarkLocalShot()
 local phem26 = phem25.Position
 if getgenv().Config.ClosestPosition and phem25:IsA("BasePart") then
 local cf = phem25.CFrame
@@ -2051,6 +2088,7 @@ FighterControllerSafe = FighterController
 local SLOT_MAP = { primary = 1, secondary = 2, melee = 3, knife = 3 }
 local PROJECTILE_NAMES = { Slingshot = true, Bow = true, Daggers = true }
 local RAGE_PARTS = { "Head", "HumanoidRootPart", "Torso", "UpperTorso", "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg" }
+local VOID_PERIOD = 1.2
 local function GetFighterItems(fighter)
 local keys = { "Items", "Inventory", "ItemSlots" }
 for _, k in ipairs(keys) do
@@ -2089,7 +2127,6 @@ end
 end
 return loaded or any
 end
--- weapon management loop (preference + swap when empty + prefer projectile)
 task.spawn(function()
 while true do
 task.wait(0.2)
@@ -2183,7 +2220,7 @@ if prot["katana deflecting"] and deflecting[player] then return true end
 if prot["blocked by riot shield"] and GetPlayerWeaponName(player) == "Riot Shield" then return true end
 return false
 end
-local function updateVoidedMarks(dt)
+local function updateVoidedMarks()
 local now = os.clock()
 for _, player in ipairs(plrs:GetPlayers()) do
 local char = player.Character
@@ -2205,6 +2242,38 @@ if expiry < now then RageVoided[key] = nil end
 end
 for key, stamp in pairs(RageAttackers) do
 if now - stamp > 6 then RageAttackers[key] = nil end
+end
+end
+local function GetVoidOffset(mode, t, depth)
+if mode == "Void Y" then
+local sign = (math.floor(t / VOID_PERIOD) % 2 == 0) and -1 or 1
+return Vector3.new(0, sign * depth, 0)
+elseif mode == "Drift" then
+return Vector3.new(math.sin(t * 0.7) * depth, math.cos(t * 0.5) * depth * 0.5, math.cos(t * 0.7) * depth)
+elseif mode == "Spiral" then
+local a = t * 3
+local rise = ((t % VOID_PERIOD) / VOID_PERIOD) * 2 - 1
+return Vector3.new(math.sin(a) * depth * 0.6, rise * depth, math.cos(a) * depth * 0.6)
+elseif mode == "Random" then
+return Vector3.new(
+(math.random() - 0.5) * 2 * depth,
+(math.random() - 0.5) * 2 * depth,
+(math.random() - 0.5) * 2 * depth
+)
+elseif mode == "Zigzag" then
+local z = (math.floor(t * 4) % 2 == 0) and 1 or -1
+return Vector3.new(z * depth, -depth * 0.5, -z * depth * 0.5)
+elseif mode == "Infinity" then
+local a = t * 2
+return Vector3.new(math.sin(a) * depth, math.sin(a * 2) * depth * 0.5, math.cos(a) * depth * 0.3)
+else
+local a = t * 2.5
+local sign = (math.floor(t / VOID_PERIOD) % 2 == 0) and -1 or 1
+return Vector3.new(
+math.sin(a) * depth * 0.5,
+sign * depth + math.sin(a * 2) * depth * 0.25,
+math.cos(a) * depth * 0.5
+)
 end
 end
 local function pickTargetPart(char)
@@ -2260,7 +2329,6 @@ end
 end
 end
 if #candidates == 0 then return nil end
--- priority pass
 if getgenv().Config.Priority then
 local settings = getgenv().Config.PrioritySettings
 local manual = getgenv().Config.PriorityTargets
@@ -2278,7 +2346,6 @@ if RageVoided[cand.player] then return cand end
 end
 end
 end
--- closest fallback
 local best = nil
 local bestD = math.huge
 for _, cand in ipairs(candidates) do
@@ -2305,6 +2372,7 @@ return CFrame.Angles(pitch, yaw, 0)
 end
 local lastPriorityName = nil
 local lastBurst = 0
+local lastDodgeJump = 0
 local cycleStart = os.clock()
 runS.Heartbeat:Connect(function(dt)
 if not getgenv().Config.Enabled then
@@ -2314,7 +2382,7 @@ return
 end
 refreshObjectIdMap(dt)
 updateDeflection()
-updateVoidedMarks(dt)
+updateVoidedMarks()
 local target = acquireTarget()
 if not target then
 RageStatusOverride = nil
@@ -2339,10 +2407,9 @@ lastPriorityName = target.player.Name
 local part = pickTargetPart(target.char)
 if not part then return end
 RageTargetHead = part
--- dead target -> desync to inf so they can't spectate our position
 if target.hum.Health <= 0 then
-local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
-if myRoot then myRoot.CFrame = CFrame.new(999999, 999999, 999999) end
+local deadRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
+if deadRoot then deadRoot.CFrame = CFrame.new(999999, 999999, 999999) end
 RageStatusOverride = "Ragebot : void"
 return
 end
@@ -2358,8 +2425,8 @@ local atk = getgenv().Config.VoidAttack
 local cycle = hide + atk
 local t = (os.clock() - cycleStart) % cycle
 local inHide = getgenv().Config.VoidSpam and (t < hide)
+local distToTarget = (target.root.Position - myRoot.Position).Magnitude
 if inHide then
--- VOID WINDOW: un-hittable position + anti-aim
 local voidPos
 if getgenv().Config.FloorHide and Options.KeybindFloorHide and Options.KeybindFloorHide.Toggled then
 voidPos = myRoot.Position - Vector3.new(0, 3, 0)
@@ -2369,7 +2436,6 @@ end
 myRoot.CFrame = CFrame.new(voidPos) * antiAimAngles()
 RageStatusOverride = "(void) hiding"
 else
--- ATTACK WINDOW: snap to target, burst fire
 cycleStart = os.clock()
 local placeOffset
 if modeKnife or getgenv().Config.AlwaysBackstab then
@@ -2377,7 +2443,25 @@ placeOffset = target.root.CFrame * CFrame.new(0, 0, 2.2)
 else
 placeOffset = target.root.CFrame * CFrame.new(math.random(-3, 3), 1, math.random(3, 6))
 end
-myRoot.CFrame = CFrame.lookAt(placeOffset.Position, part.Position) * antiAimAngles()
+local depth = 1 + (math.clamp(getgenv().Config.RageHideVoid or 50, 0, 100) / 100) * 2
+local patternOffset = GetVoidOffset(getgenv().Config.VoidType or "Hybrid", tick(), depth * 0.5)
+local placePos = placeOffset.Position + patternOffset
+-- // AUTO DODGE: close-range perpendicular swing + hop so their aim whiffs
+if getgenv().Config.AutoDodge and distToTarget < getgenv().Config.AutoDodgeRange then
+local away = myRoot.Position - target.root.Position
+local flat = Vector3.new(away.X, 0, away.Z)
+local side = (flat.Magnitude > 0.1 and flat.Unit or Vector3.new(1, 0, 0)):Cross(Vector3.new(0, 1, 0))
+local flip = (math.floor(tick() * 7) % 2 == 0) and 1 or -1
+placePos = placePos + side * (flip * 4.5) + Vector3.new(0, math.sin(tick() * 13) * 1.2, 0)
+if tick() - lastDodgeJump > 0.45 then
+lastDodgeJump = tick()
+local hum = lplr.Character and lplr.Character:FindFirstChildOfClass("Humanoid")
+if hum and hum.Health > 0 then
+pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
+end
+end
+end
+myRoot.CFrame = CFrame.lookAt(placePos, part.Position) * antiAimAngles()
 local now = tick()
 if now - lastBurst >= getgenv().Config.BurstDelay and equipped then
 lastBurst = now
@@ -2397,6 +2481,7 @@ cameradata[utf8.char(1)] = {
 [utf8.char(3)] = util:EncodeCFrame(objSpace)
 }
 for i = 1, math.max(1, getgenv().Config.ShootAttempts) do
+MarkLocalShot()
 pcall(function()
 repS.Remotes.Replication.Fighter.UseItem:FireServer(
 equipped:Get("ObjectID"),
@@ -2413,7 +2498,6 @@ else
 RageStatusOverride = "(void) spamming " .. target.player.Name
 end
 end
--- defensive counters (standalone, not part of ue cycle)
 local counter = getgenv().Config.CounterType
 if counter == "kicia" or counter == "ue" then
 local oldCF = myRoot.CFrame
@@ -2429,7 +2513,6 @@ runS:UnbindFromRenderStep("__counter_restore")
 end)
 end
 end)
--- manual priority dropdown refresh
 task.spawn(function()
 while true do
 task.wait(3)
@@ -2523,8 +2606,6 @@ ShowDamageText(hitPart.Position, damage)
 end
 end
 end
-return
-end
 end
 end
 task.spawn(function()
@@ -2544,10 +2625,35 @@ end
 end)
 end)
 end
--- // 14. Status Text composer (two-line, ue override)
+-- // 14. Status Text composer (shot-gated: only claims spamming when a shot actually registered)
 local currentStateText = ""
 runS.Heartbeat:Connect(function()
-local state = RageStatusOverride or "Ragebot : void"
+local state
+local firing = (os.clock() - LastLocalShot) <= 0.75
+if not getgenv().Config.Enabled then
+state = "Ragebot : void"
+else
+local tp = RageTargetHead and RageTargetHead.Parent and RageTargetHead or nil
+if tp then
+local item = FighterController.LocalFighter and FighterController.LocalFighter.EquippedItem
+local reloading = item and rawget(item, "_reload_cooldown") and rawget(item, "_reload_cooldown") > tick()
+if reloading then
+state = "(void) reloading"
+elseif deflecting[tp.Parent and Players:GetPlayerFromCharacter(tp.Parent) or 0] then
+state = "hiding"
+elseif not firing then
+state = "Ragebot : void"
+elseif getgenv().Config.RageWeapon == "knife" or getgenv().Config.RageMode == "knife" then
+local owner = Players:GetPlayerFromCharacter(tp.Parent)
+state = "Ragebot : stabbing " .. (owner and owner.Name or "target") .. " in " .. string.format("%.2f", getgenv().Config.VoidHide) .. "s..."
+else
+local owner = Players:GetPlayerFromCharacter(tp.Parent)
+state = "(void) spamming " .. (owner and owner.Name or "target")
+end
+else
+state = "Ragebot : void"
+end
+end
 local parts = Options.StatusTextParts.Value or {}
 local gunName, gunAmmo, gunMax = GetLocalGunInfo()
 local ammoSeg = nil
@@ -3506,6 +3612,7 @@ CreatedTime = tick(),
 end
 local function TRSpawn(startPos, endPos)
 if not startPos or not endPos then return end
+MarkLocalShot()
 local key = string.format("%.1f_%.1f_%.1f_%.1f_%.1f_%.1f", startPos.X, startPos.Y, startPos.Z, endPos.X, endPos.Y, endPos.Z)
 local now = tick()
 local last = TR.Dedupe[key]
@@ -3680,4 +3787,4 @@ QueueWalkSpeedHook()
 end
 end)
 end)
-Library:Notify("Project Aurora V5 | pure UE ragebot cycle, priority targeting, anim/emote bloat stripped. RightShift for menu.", 5)
+Library:Notify("Project Aurora V6 | tab panes, disabled dropdown values, shot-gated status, auto-dodge. RightShift for menu.", 5)
